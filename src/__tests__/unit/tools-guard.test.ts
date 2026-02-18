@@ -102,25 +102,25 @@ describe("exec tool – allowed commands", () => {
   it("allows: ls", async () => {
     const result = await execTool.execute({ command: "ls" }, mockCtx);
     expect(result).not.toMatch(/^Blocked:/);
-    expect(mockExec).toHaveBeenCalledWith("ls", 30000);
+    expect(mockExec).toHaveBeenCalledWith("ls", 30_000);
   });
 
   it("allows: node --version", async () => {
     const result = await execTool.execute({ command: "node --version" }, mockCtx);
     expect(result).not.toMatch(/^Blocked:/);
-    expect(mockExec).toHaveBeenCalledWith("node --version", 30000);
+    expect(mockExec).toHaveBeenCalledWith("node --version", 30_000);
   });
 
   it("allows: echo hello", async () => {
     const result = await execTool.execute({ command: "echo hello" }, mockCtx);
     expect(result).not.toMatch(/^Blocked:/);
-    expect(mockExec).toHaveBeenCalledWith("echo hello", 30000);
+    expect(mockExec).toHaveBeenCalledWith("echo hello", 30_000);
   });
 
   it("allows: rm -rf /tmp/work (not a protected path)", async () => {
     const result = await execTool.execute({ command: "rm -rf /tmp/work" }, mockCtx);
     expect(result).not.toMatch(/^Blocked:/);
-    expect(mockExec).toHaveBeenCalledWith("rm -rf /tmp/work", 30000);
+    expect(mockExec).toHaveBeenCalledWith("rm -rf /tmp/work", 30_000);
   });
 
   it("allows: sandbox_delete with a different sandboxId", async () => {
@@ -130,6 +130,48 @@ describe("exec tool – allowed commands", () => {
     );
     expect(result).not.toMatch(/^Blocked:/);
     expect(mockExec).toHaveBeenCalled();
+  });
+});
+
+describe("exec tool – timeout validation", () => {
+  it("uses default 30s when timeout is omitted", async () => {
+    await execTool.execute({ command: "ls" }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 30_000);
+  });
+
+  it("uses default 30s when timeout is 0 (falsy but invalid)", async () => {
+    await execTool.execute({ command: "ls", timeout: 0 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 30_000);
+  });
+
+  it("uses default 30s when timeout is negative", async () => {
+    await execTool.execute({ command: "ls", timeout: -1 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 30_000);
+  });
+
+  it("uses default 30s when timeout is below minimum (999ms)", async () => {
+    await execTool.execute({ command: "ls", timeout: 999 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 30_000);
+  });
+
+  it("passes through a valid timeout of 10000ms", async () => {
+    await execTool.execute({ command: "ls", timeout: 10_000 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 10_000);
+  });
+
+  it("clamps timeout to 300000ms maximum", async () => {
+    await execTool.execute({ command: "ls", timeout: 999_999 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 300_000);
+  });
+
+  it("accepts exactly the minimum (1000ms)", async () => {
+    await execTool.execute({ command: "ls", timeout: 1_000 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 1_000);
+  });
+
+  it("accepts exactly the maximum (300000ms)", async () => {
+    await execTool.execute({ command: "ls", timeout: 300_000 }, mockCtx);
+    expect(mockExec).toHaveBeenCalledWith("ls", 300_000);
   });
 });
 
@@ -204,5 +246,25 @@ describe("write_file tool – protected path guard (isProtectedFile)", () => {
     );
     expect(result).not.toMatch(/^Blocked:/);
     expect(mockWriteFile).toHaveBeenCalledWith("/root/myapp/index.js", "console.log('hi')");
+  });
+
+  it("allows: a file inside a directory that happens to be named 'state.db'", async () => {
+    // old substring .includes() match would have blocked this (false positive);
+    // the new check uses path-boundary matching so only the file itself is protected
+    const result = await writeFileTool.execute(
+      { path: "/tmp/state.db/output.txt", content: "data" },
+      mockCtx,
+    );
+    expect(result).not.toMatch(/^Blocked:/);
+    expect(mockWriteFile).toHaveBeenCalledWith("/tmp/state.db/output.txt", "data");
+  });
+
+  it("still blocks the actual state.db file", async () => {
+    const result = await writeFileTool.execute(
+      { path: "/root/.sol-automaton/state.db", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
   });
 });

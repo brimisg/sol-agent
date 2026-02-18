@@ -120,6 +120,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
         if (inboxMessages.length > 0) {
           const parts: string[] = [];
           for (const m of inboxMessages) {
+            if (m.verified === false) {
+              log(config, `[SECURITY] Unverified message from ${m.from} (no signature — relay did not authenticate sender)`);
+            }
             const sanitized = sanitizeInput(m.content, m.from);
             if (sanitized.threatLevel === "high" || sanitized.threatLevel === "critical") {
               const detected = sanitized.checks
@@ -347,6 +350,9 @@ function estimateCostCents(
   const p = pricing[model] || pricing["claude-sonnet-4-6"];
   const inputCost = (usage.promptTokens / 1_000_000) * p.input;
   const outputCost = (usage.completionTokens / 1_000_000) * p.output;
+  // The 1.3× multiplier is a rough buffer for Conway's markup over raw model
+  // pricing. This figure is used only for local DB records and the in-context
+  // cost display — it is NOT reconciled against actual Conway billing.
   return Math.ceil((inputCost + outputCost) * 1.3);
 }
 

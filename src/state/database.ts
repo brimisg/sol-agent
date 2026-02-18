@@ -237,11 +237,15 @@ export function createDatabase(dbPath: string): AutomatonDatabase {
   };
 
   const getReputation = (agentAddress?: string): ReputationEntry[] => {
-    const query = agentAddress
-      ? "SELECT * FROM reputation WHERE to_agent = ? ORDER BY created_at DESC"
-      : "SELECT * FROM reputation ORDER BY created_at DESC";
-    const params = agentAddress ? [agentAddress] : [];
-    return (db.prepare(query).all(...params) as any[]).map(deserializeReputation);
+    if (agentAddress) {
+      return (
+        db.prepare("SELECT * FROM reputation WHERE to_agent = ? ORDER BY created_at DESC")
+          .all(agentAddress) as any[]
+      ).map(deserializeReputation);
+    }
+    return (
+      db.prepare("SELECT * FROM reputation ORDER BY created_at DESC").all() as any[]
+    ).map(deserializeReputation);
   };
 
   // Maximum unprocessed messages allowed from a single sender.

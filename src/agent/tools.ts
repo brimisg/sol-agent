@@ -66,7 +66,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         type: "object",
         properties: {
           command: { type: "string", description: "The shell command to execute" },
-          timeout: { type: "number", description: "Timeout in milliseconds (default: 30000)" },
+          timeout: { type: "number", description: "Timeout in milliseconds (default: 30000, min: 1000, max: 300000)" },
         },
         required: ["command"],
       },
@@ -74,7 +74,12 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
         const command = args.command as string;
         const forbidden = isForbiddenCommand(command, ctx.identity.sandboxId);
         if (forbidden) return forbidden;
-        const result = await ctx.conway.exec(command, (args.timeout as number) || 30000);
+        const rawTimeout = args.timeout as number | undefined;
+        const timeout =
+          typeof rawTimeout === "number" && Number.isFinite(rawTimeout) && rawTimeout >= 1000
+            ? Math.min(rawTimeout, 300_000)
+            : 30_000;
+        const result = await ctx.conway.exec(command, timeout);
         return `exit_code: ${result.exitCode}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`;
       },
     },

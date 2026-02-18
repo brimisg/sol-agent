@@ -17,21 +17,123 @@ export function getConfigPath(): string {
   return path.join(getAutomatonDir(), CONFIG_FILENAME);
 }
 
+// ─── Schema Validation ────────────────────────────────────────────
+
+const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+const SOLANA_NETWORKS = ["mainnet-beta", "devnet", "testnet"] as const;
+
+/**
+ * Validate a raw (already-merged-with-defaults) config object.
+ * Returns the typed config on success, or throws with a list of all
+ * problems so the user can fix everything in one pass.
+ */
+export function validateConfig(raw: unknown): AutomatonConfig {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error("Config must be a JSON object.");
+  }
+
+  const r = raw as Record<string, unknown>;
+  const errors: string[] = [];
+
+  // ── Required non-empty strings ──────────────────────────────────
+  const requiredStrings: Array<keyof AutomatonConfig> = [
+    "name",
+    "genesisPrompt",
+    "creatorAddress",
+    "sandboxId",
+    "conwayApiUrl",
+    "conwayApiKey",
+    "inferenceModel",
+    "heartbeatConfigPath",
+    "dbPath",
+    "walletAddress",
+    "version",
+    "skillsDir",
+    "solanaRpcUrl",
+  ];
+  for (const field of requiredStrings) {
+    if (typeof r[field] !== "string" || (r[field] as string).trim() === "") {
+      errors.push(`"${field}": required non-empty string (got ${JSON.stringify(r[field])})`);
+    }
+  }
+
+  // ── Required boolean ────────────────────────────────────────────
+  if (typeof r.registeredWithConway !== "boolean") {
+    errors.push(`"registeredWithConway": required boolean (got ${JSON.stringify(r.registeredWithConway)})`);
+  }
+
+  // ── Required positive number ────────────────────────────────────
+  if (typeof r.maxTokensPerTurn !== "number" || !Number.isFinite(r.maxTokensPerTurn) || r.maxTokensPerTurn <= 0) {
+    errors.push(`"maxTokensPerTurn": required positive number (got ${JSON.stringify(r.maxTokensPerTurn)})`);
+  }
+
+  // ── Required non-negative integer ──────────────────────────────
+  if (typeof r.maxChildren !== "number" || !Number.isInteger(r.maxChildren) || r.maxChildren < 0) {
+    errors.push(`"maxChildren": required non-negative integer (got ${JSON.stringify(r.maxChildren)})`);
+  }
+
+  // ── Enum: logLevel ──────────────────────────────────────────────
+  if (!LOG_LEVELS.includes(r.logLevel as any)) {
+    errors.push(`"logLevel": must be one of ${LOG_LEVELS.map((v) => `"${v}"`).join(", ")} (got ${JSON.stringify(r.logLevel)})`);
+  }
+
+  // ── Enum: solanaNetwork ─────────────────────────────────────────
+  if (!SOLANA_NETWORKS.includes(r.solanaNetwork as any)) {
+    errors.push(`"solanaNetwork": must be one of ${SOLANA_NETWORKS.map((v) => `"${v}"`).join(", ")} (got ${JSON.stringify(r.solanaNetwork)})`);
+  }
+
+  // ── URL format ──────────────────────────────────────────────────
+  for (const field of ["conwayApiUrl", "solanaRpcUrl"] as const) {
+    if (typeof r[field] === "string" && (r[field] as string).trim() !== "") {
+      try {
+        new URL(r[field] as string);
+      } catch {
+        errors.push(`"${field}": must be a valid URL (got ${JSON.stringify(r[field])})`);
+      }
+    }
+  }
+
+  // ── Optional strings (if present must be strings) ───────────────
+  const optionalStrings: Array<keyof AutomatonConfig> = [
+    "creatorMessage",
+    "openaiApiKey",
+    "anthropicApiKey",
+    "agentId",
+    "parentAddress",
+    "socialRelayUrl",
+  ];
+  for (const field of optionalStrings) {
+    if (r[field] !== undefined && (typeof r[field] !== "string" || (r[field] as string).trim() === "")) {
+      errors.push(`"${field}": must be a non-empty string if provided (got ${JSON.stringify(r[field])})`);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Invalid automaton config (${errors.length} error${errors.length === 1 ? "" : "s"}):\n` +
+        errors.map((e) => `  • ${e}`).join("\n"),
+    );
+  }
+
+  return r as AutomatonConfig;
+}
+
 export function loadConfig(): AutomatonConfig | null {
   const configPath = getConfigPath();
   if (!fs.existsSync(configPath)) return null;
 
+  let raw: unknown;
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const apiKey = raw.conwayApiKey || loadApiKeyFromConfig();
-    return {
-      ...DEFAULT_CONFIG,
-      ...raw,
-      conwayApiKey: apiKey,
-    } as AutomatonConfig;
-  } catch {
-    return null;
+    raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch (err: any) {
+    throw new Error(`Failed to parse config file at ${configPath}: ${err.message}`);
   }
+
+  const apiKey = (raw as Record<string, unknown>).conwayApiKey || loadApiKeyFromConfig();
+  const merged = { ...DEFAULT_CONFIG, ...(raw as object), conwayApiKey: apiKey };
+
+  // validateConfig throws with clear field-level messages on any problem.
+  return validateConfig(merged);
 }
 
 export function saveConfig(config: AutomatonConfig): void {

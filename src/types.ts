@@ -169,6 +169,14 @@ export interface InboxMessage {
   signedAt: string;
   createdAt: string;
   replyTo?: string;
+  /** Base58-encoded ed25519 detached signature from the sender, if available. */
+  signature?: string;
+  /**
+   * true  – signature was present and verified against `from`
+   * false – signature was absent (relay did not forward it, or non-agent sender)
+   * undefined – not checked (e.g. message inserted outside the relay path)
+   */
+  verified?: boolean;
 }
 
 // ─── Heartbeat ───────────────────────────────────────────────────
