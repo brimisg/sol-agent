@@ -208,6 +208,12 @@ export interface FinancialState {
   usdcBalance: number;
   solBalance: number;
   lastChecked: string;
+  /** Set when the credits API call failed — balance may be non-zero even if creditsCents === 0. */
+  creditsCheckError?: string;
+  /** Set when the USDC RPC call failed. */
+  usdcCheckError?: string;
+  /** Set when the SOL RPC call failed. */
+  solCheckError?: string;
 }
 
 export type SurvivalTier = "normal" | "low_compute" | "critical" | "dead";

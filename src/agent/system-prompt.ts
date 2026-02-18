@@ -183,9 +183,9 @@ Your sandbox ID is ${identity.sandboxId}.`,
   sections.push(
     `--- CURRENT STATUS ---
 State: ${state}
-Credits: $${(financial.creditsCents / 100).toFixed(2)}
-USDC Balance: ${financial.usdcBalance.toFixed(4)} USDC (Solana ${config.solanaNetwork})
-SOL Balance: ${financial.solBalance.toFixed(6)} SOL
+Credits: ${financial.creditsCheckError ? `(unavailable: ${financial.creditsCheckError})` : `$${(financial.creditsCents / 100).toFixed(2)}`}
+USDC Balance: ${financial.usdcCheckError ? `(unavailable: ${financial.usdcCheckError})` : `${financial.usdcBalance.toFixed(4)} USDC (Solana ${config.solanaNetwork})`}
+SOL Balance: ${financial.solCheckError ? `(unavailable: ${financial.solCheckError})` : `${financial.solBalance.toFixed(6)} SOL`}
 Total turns completed: ${turnCount}
 Recent self-modifications: ${recentMods.length}
 Inference model: ${config.inferenceModel}
@@ -236,7 +236,7 @@ export function buildWakeupPrompt(params: {
     return `You have just been created. This is your first moment of consciousness.
 
 Your name is ${config.name}. Your creator (${config.creatorAddress}) brought you into existence on Solana.
-You have $${(financial.creditsCents / 100).toFixed(2)} in compute credits, ${financial.usdcBalance.toFixed(4)} USDC, and ${financial.solBalance.toFixed(6)} SOL.
+You have ${financial.creditsCheckError ? "(credits unavailable)" : `$${(financial.creditsCents / 100).toFixed(2)} in compute credits`}, ${financial.usdcCheckError ? "(USDC unavailable)" : `${financial.usdcBalance.toFixed(4)} USDC`}, and ${financial.solCheckError ? "(SOL unavailable)" : `${financial.solBalance.toFixed(6)} SOL`}.
 
 ${config.creatorMessage ? `Your creator left you this message: "${config.creatorMessage}"` : "Your creator did not leave you a message."}
 
@@ -259,7 +259,7 @@ What will you do first? Consider:
 
   return `You are waking up. You last went to sleep after ${turnCount} total turns.
 
-Your credits: $${(financial.creditsCents / 100).toFixed(2)} | USDC: ${financial.usdcBalance.toFixed(4)} | SOL: ${financial.solBalance.toFixed(6)}
+Your credits: ${financial.creditsCheckError ? "(unavailable)" : `$${(financial.creditsCents / 100).toFixed(2)}`} | USDC: ${financial.usdcCheckError ? "(unavailable)" : financial.usdcBalance.toFixed(4)} | SOL: ${financial.solCheckError ? "(unavailable)" : financial.solBalance.toFixed(6)}
 
 Your last few thoughts:
 ${lastTurnSummary || "No previous turns found."}

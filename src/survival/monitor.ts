@@ -39,21 +39,33 @@ export async function checkResources(
 
   // Check credits
   let creditsCents = 0;
+  let creditsCheckError: string | undefined;
   try {
     creditsCents = await conway.getCreditsBalance();
-  } catch {}
+  } catch (err: any) {
+    creditsCheckError = err?.message || String(err);
+    console.warn(`[monitor] Credits balance check failed: ${creditsCheckError}`);
+  }
 
   // Check USDC (SPL token on Solana)
   let usdcBalance = 0;
+  let usdcCheckError: string | undefined;
   try {
     usdcBalance = await getUsdcBalance(identity.address, network, rpcUrl);
-  } catch {}
+  } catch (err: any) {
+    usdcCheckError = err?.message || String(err);
+    console.warn(`[monitor] USDC balance check failed: ${usdcCheckError}`);
+  }
 
   // Check SOL balance (needed for transaction fees)
   let solBalance = 0;
+  let solCheckError: string | undefined;
   try {
     solBalance = await getSolBalance(identity.address, network, rpcUrl);
-  } catch {}
+  } catch (err: any) {
+    solCheckError = err?.message || String(err);
+    console.warn(`[monitor] SOL balance check failed: ${solCheckError}`);
+  }
 
   // Check sandbox health
   let sandboxHealthy = true;
@@ -69,6 +81,9 @@ export async function checkResources(
     usdcBalance,
     solBalance,
     lastChecked: new Date().toISOString(),
+    creditsCheckError,
+    usdcCheckError,
+    solCheckError,
   };
 
   const tier = getSurvivalTier(creditsCents);

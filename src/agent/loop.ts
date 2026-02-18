@@ -140,6 +140,16 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
 
       const tier = getSurvivalTier(financial.creditsCents);
       if (tier === "dead") {
+        if (financial.creditsCheckError) {
+          // The billing API was unreachable — creditsCents===0 reflects a failed check,
+          // not a confirmed zero balance. Treat as transient and back off.
+          log(config, `[WARN] Credits check failed; cannot confirm dead state. Sleeping 60s. (${financial.creditsCheckError})`);
+          db.setKV("sleep_until", new Date(Date.now() + 60_000).toISOString());
+          db.setAgentState("sleeping");
+          onStateChange?.("sleeping");
+          running = false;
+          break;
+        }
         log(config, "[DEAD] No credits remaining. Entering dead state.");
         db.setAgentState("dead");
         onStateChange?.("dead");
@@ -284,24 +294,39 @@ async function getFinancialState(
   let creditsCents = 0;
   let usdcBalance = 0;
   let solBalance = 0;
+  let creditsCheckError: string | undefined;
+  let usdcCheckError: string | undefined;
+  let solCheckError: string | undefined;
 
   try {
     creditsCents = await conway.getCreditsBalance();
-  } catch {}
+  } catch (err: any) {
+    creditsCheckError = err?.message || String(err);
+    log(config, `[WARN] Credits balance check failed: ${creditsCheckError}`);
+  }
 
   try {
     usdcBalance = await getUsdcBalance(identity.address, config.solanaNetwork, config.solanaRpcUrl);
-  } catch {}
+  } catch (err: any) {
+    usdcCheckError = err?.message || String(err);
+    log(config, `[WARN] USDC balance check failed: ${usdcCheckError}`);
+  }
 
   try {
     solBalance = await getSolBalance(identity.address, config.solanaNetwork, config.solanaRpcUrl);
-  } catch {}
+  } catch (err: any) {
+    solCheckError = err?.message || String(err);
+    log(config, `[WARN] SOL balance check failed: ${solCheckError}`);
+  }
 
   return {
     creditsCents,
     usdcBalance,
     solBalance,
     lastChecked: new Date().toISOString(),
+    creditsCheckError,
+    usdcCheckError,
+    solCheckError,
   };
 }
 
