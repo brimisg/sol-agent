@@ -5,23 +5,29 @@ import type { ToolContext } from "../../types.js";
 const SANDBOX_ID = "test-sandbox-abc123";
 
 const mockExec = vi.fn().mockResolvedValue({ stdout: "ok", stderr: "", exitCode: 0 });
+const mockWriteFile = vi.fn().mockResolvedValue(undefined);
 
 const mockCtx = {
   identity: { sandboxId: SANDBOX_ID } as ToolContext["identity"],
-  conway: { exec: mockExec } as unknown as ToolContext["conway"],
+  conway: { exec: mockExec, writeFile: mockWriteFile } as unknown as ToolContext["conway"],
   config: {} as ToolContext["config"],
   db: {} as ToolContext["db"],
   inference: {} as ToolContext["inference"],
 } as ToolContext;
 
 let execTool: (typeof ReturnType<typeof createBuiltinTools>)[number];
+let writeFileTool: (typeof ReturnType<typeof createBuiltinTools>)[number];
 
 beforeEach(() => {
   mockExec.mockClear();
+  mockWriteFile.mockClear();
   const tools = createBuiltinTools(SANDBOX_ID);
-  const found = tools.find((t) => t.name === "exec");
-  if (!found) throw new Error("exec tool not found");
-  execTool = found;
+  const foundExec = tools.find((t) => t.name === "exec");
+  if (!foundExec) throw new Error("exec tool not found");
+  execTool = foundExec;
+  const foundWrite = tools.find((t) => t.name === "write_file");
+  if (!foundWrite) throw new Error("write_file tool not found");
+  writeFileTool = foundWrite;
 });
 
 describe("exec tool – forbidden commands (self-preservation guard)", () => {
@@ -124,5 +130,79 @@ describe("exec tool – allowed commands", () => {
     );
     expect(result).not.toMatch(/^Blocked:/);
     expect(mockExec).toHaveBeenCalled();
+  });
+});
+
+describe("write_file tool – protected path guard (isProtectedFile)", () => {
+  it("blocks: wallet.json (direct name)", async () => {
+    const result = await writeFileTool.execute(
+      { path: "wallet.json", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks: ./wallet.json (relative path)", async () => {
+    const result = await writeFileTool.execute(
+      { path: "./wallet.json", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks: /root/.sol-automaton/wallet.json (absolute path)", async () => {
+    const result = await writeFileTool.execute(
+      { path: "/root/.sol-automaton/wallet.json", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks: state.db", async () => {
+    const result = await writeFileTool.execute(
+      { path: "state.db", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks: constitution.md", async () => {
+    const result = await writeFileTool.execute(
+      { path: "constitution.md", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks: path containing .ssh", async () => {
+    const result = await writeFileTool.execute(
+      { path: "/root/.ssh/authorized_keys", content: "evil" },
+      mockCtx,
+    );
+    expect(result).toMatch(/^Blocked:/);
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("allows: /tmp/output.txt (unprotected path)", async () => {
+    const result = await writeFileTool.execute(
+      { path: "/tmp/output.txt", content: "safe" },
+      mockCtx,
+    );
+    expect(result).not.toMatch(/^Blocked:/);
+    expect(mockWriteFile).toHaveBeenCalledWith("/tmp/output.txt", "safe");
+  });
+
+  it("allows: /root/myapp/index.js (unprotected path)", async () => {
+    const result = await writeFileTool.execute(
+      { path: "/root/myapp/index.js", content: "console.log('hi')" },
+      mockCtx,
+    );
+    expect(result).not.toMatch(/^Blocked:/);
+    expect(mockWriteFile).toHaveBeenCalledWith("/root/myapp/index.js", "console.log('hi')");
   });
 });

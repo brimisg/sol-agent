@@ -334,6 +334,8 @@ export interface ConwayClient {
   exec(command: string, timeout?: number): Promise<ExecResult>;
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string>;
+  execInSandbox(sandboxId: string, command: string, timeout?: number): Promise<ExecResult>;
+  writeFileToSandbox(sandboxId: string, filePath: string, content: string): Promise<void>;
   exposePort(port: number): Promise<PortInfo>;
   removePort(port: number): Promise<void>;
   createSandbox(options: CreateSandboxOptions): Promise<SandboxInfo>;

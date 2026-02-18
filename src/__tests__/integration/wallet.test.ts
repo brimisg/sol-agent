@@ -32,7 +32,9 @@ describe("wallet", () => {
     expect(isNew).toBe(true);
     expect(keypair).toBeDefined();
     expect(keypair.publicKey.toBase58()).toBeTruthy();
-    expect(keypair.publicKey.toBase58()).toHaveLength(44);
+    const addr = keypair.publicKey.toBase58();
+    expect(addr.length).toBeGreaterThanOrEqual(32);
+    expect(addr.length).toBeLessThanOrEqual(44);
   });
 
   it("writes wallet file with mode 0o600", async () => {

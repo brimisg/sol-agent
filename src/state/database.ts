@@ -244,7 +244,26 @@ export function createDatabase(dbPath: string): AutomatonDatabase {
     return (db.prepare(query).all(...params) as any[]).map(deserializeReputation);
   };
 
+  // Maximum unprocessed messages allowed from a single sender.
+  const INBOX_PER_SENDER_LIMIT = 10;
+  // Maximum total unprocessed messages in the queue at any time.
+  const INBOX_GLOBAL_LIMIT = 100;
+
   const insertInboxMessage = (msg: InboxMessage): void => {
+    // Global queue cap — prevents unbounded memory / compute growth.
+    const globalCount = (
+      db.prepare("SELECT COUNT(*) as cnt FROM inbox_messages WHERE processed_at IS NULL").get() as any
+    ).cnt as number;
+    if (globalCount >= INBOX_GLOBAL_LIMIT) return;
+
+    // Per-sender cap — prevents a single sender from monopolising the queue.
+    const senderCount = (
+      db.prepare(
+        "SELECT COUNT(*) as cnt FROM inbox_messages WHERE from_address = ? AND processed_at IS NULL",
+      ).get(msg.from) as any
+    ).cnt as number;
+    if (senderCount >= INBOX_PER_SENDER_LIMIT) return;
+
     db.prepare(
       `INSERT OR IGNORE INTO inbox_messages (id, from_address, content, received_at, reply_to)
        VALUES (?, ?, ?, ?, ?)`,

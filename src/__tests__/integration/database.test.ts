@@ -344,6 +344,54 @@ describe("inbox messages", () => {
     const msgs = db.getUnprocessedInboxMessages(2);
     expect(msgs).toHaveLength(2);
   });
+
+  it("per-sender cap: drops messages beyond 10 unprocessed from same sender", () => {
+    for (let i = 0; i < 12; i++) {
+      db.insertInboxMessage({ ...makeMsg(`flood-${i}`), from: "FloodSender" });
+    }
+    const msgs = db.getUnprocessedInboxMessages(100);
+    const fromFlooder = msgs.filter((m) => m.from === "FloodSender");
+    expect(fromFlooder).toHaveLength(10);
+  });
+
+  it("per-sender cap: a different sender is unaffected by another sender's cap", () => {
+    for (let i = 0; i < 12; i++) {
+      db.insertInboxMessage({ ...makeMsg(`s1-${i}`), from: "Sender1" });
+    }
+    for (let i = 0; i < 5; i++) {
+      db.insertInboxMessage({ ...makeMsg(`s2-${i}`), from: "Sender2" });
+    }
+    const msgs = db.getUnprocessedInboxMessages(100);
+    expect(msgs.filter((m) => m.from === "Sender1")).toHaveLength(10);
+    expect(msgs.filter((m) => m.from === "Sender2")).toHaveLength(5);
+  });
+
+  it("global cap: total unprocessed queue is capped at 100", () => {
+    // Insert from many different senders to bypass per-sender cap
+    for (let i = 0; i < 110; i++) {
+      db.insertInboxMessage({ ...makeMsg(`global-${i}`), from: `Sender-${i}` });
+    }
+    const msgs = db.getUnprocessedInboxMessages(200);
+    expect(msgs).toHaveLength(100);
+  });
+
+  it("global cap: processed messages free space for new ones", () => {
+    // Fill to the global cap
+    for (let i = 0; i < 100; i++) {
+      db.insertInboxMessage({ ...makeMsg(`fill-${i}`), from: `S-${i}` });
+    }
+    // This should be dropped (queue full)
+    db.insertInboxMessage({ ...makeMsg("overflow"), from: "NewSender" });
+    expect(db.getUnprocessedInboxMessages(200)).toHaveLength(100);
+
+    // Process one to free a slot
+    db.markInboxMessageProcessed("fill-0");
+    // Now the new message should be accepted
+    db.insertInboxMessage({ ...makeMsg("after-free"), from: "NewSender" });
+    const msgs = db.getUnprocessedInboxMessages(200);
+    expect(msgs).toHaveLength(100);
+    expect(msgs.some((m) => m.id === "after-free")).toBe(true);
+  });
 });
 
 // ─── Agent State ───────────────────────────────────────────────

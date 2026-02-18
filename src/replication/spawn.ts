@@ -63,11 +63,10 @@ export async function spawnChild(
   db.insertChild(child);
 
   // 2. Install Node.js and the sol-automaton runtime in the child sandbox
-  await execInSandbox(conway, sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
+  await conway.execInSandbox(sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
 
   // 3. Install the sol-automaton runtime
-  await execInSandbox(
-    conway,
+  await conway.execInSandbox(
     sandbox.id,
     "npm install -g @conway/sol-automaton@latest 2>/dev/null || true",
     60000,
@@ -86,7 +85,7 @@ export async function spawnChild(
     2,
   );
 
-  await writeInSandbox(
+  await writeInChildSandbox(
     conway,
     sandbox.id,
     "/root/.sol-automaton/genesis.json",
@@ -101,14 +100,14 @@ export async function spawnChild(
   );
   try {
     const constitution = fs.readFileSync(constitutionPath, "utf-8");
-    await writeInSandbox(
+    await writeInChildSandbox(
       conway,
       sandbox.id,
       "/root/.sol-automaton/constitution.md",
       constitution,
     );
     // Make it read-only in the child
-    await execInSandbox(conway, sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
+    await conway.execInSandbox(sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
   } catch {
     // Constitution file not found locally — child will get it from the repo on build
   }
@@ -137,8 +136,7 @@ export async function startChild(
   if (!child) throw new Error(`Child ${childId} not found`);
 
   // Initialize wallet (generates Solana keypair), provision, and run
-  await execInSandbox(
-    conway,
+  await conway.execInSandbox(
     child.sandboxId,
     "sol-automaton --init && sol-automaton --provision && systemctl start sol-automaton 2>/dev/null || sol-automaton --run &",
     60000,
@@ -159,8 +157,7 @@ export async function checkChildStatus(
   if (!child) throw new Error(`Child ${childId} not found`);
 
   try {
-    const result = await execInSandbox(
-      conway,
+    const result = await conway.execInSandbox(
       child.sandboxId,
       "sol-automaton --status 2>/dev/null || echo 'offline'",
       10000,
@@ -203,7 +200,7 @@ export async function messageChild(
     timestamp: new Date().toISOString(),
   });
 
-  await writeInSandbox(
+  await writeInChildSandbox(
     conway,
     child.sandboxId,
     `/root/.sol-automaton/inbox/${ulid()}.json`,
@@ -213,60 +210,32 @@ export async function messageChild(
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-async function execInSandbox(
-  conway: ConwayClient,
-  sandboxId: string,
-  command: string,
-  timeout: number = 30000,
-) {
-  // Use the Conway API to exec in a specific sandbox
-  const apiUrl = (conway as any).__apiUrl || "https://api.conway.tech";
-  const apiKey = (conway as any).__apiKey || "";
-
-  const resp = await fetch(`${apiUrl}/v1/sandboxes/${sandboxId}/exec`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: apiKey,
-    },
-    body: JSON.stringify({ command, timeout }),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Exec in sandbox ${sandboxId} failed: ${text}`);
-  }
-
-  return resp.json();
+/**
+ * Wrap a string in single quotes for safe POSIX shell interpolation.
+ * Any embedded single quotes are escaped as '\''.
+ * This neutralises all shell metacharacters (;, &&, |, $, `, etc.).
+ */
+function shellQuote(str: string): string {
+  return "'" + str.replace(/'/g, "'\\''") + "'";
 }
 
-async function writeInSandbox(
+/**
+ * Write a file to a child sandbox, creating the parent directory first.
+ * Validates the path and shell-quotes the directory to prevent injection.
+ */
+async function writeInChildSandbox(
   conway: ConwayClient,
   sandboxId: string,
   filePath: string,
   content: string,
-) {
-  const apiUrl = (conway as any).__apiUrl || "https://api.conway.tech";
-  const apiKey = (conway as any).__apiKey || "";
-
-  // Ensure parent directory exists
-  const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-  await execInSandbox(conway, sandboxId, `mkdir -p ${dir}`, 5000);
-
-  const resp = await fetch(
-    `${apiUrl}/v1/sandboxes/${sandboxId}/files/upload/json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: apiKey,
-      },
-      body: JSON.stringify({ path: filePath, content }),
-    },
-  );
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`Write to sandbox ${sandboxId} failed: ${text}`);
+): Promise<void> {
+  if (!filePath.startsWith("/")) {
+    throw new Error(`writeInChildSandbox: filePath must be absolute, got: ${filePath}`);
   }
+  if (filePath.includes("..")) {
+    throw new Error(`writeInChildSandbox: filePath must not contain '..', got: ${filePath}`);
+  }
+  const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+  await conway.execInSandbox(sandboxId, `mkdir -p ${shellQuote(dir)}`, 5000);
+  await conway.writeFileToSandbox(sandboxId, filePath, content);
 }

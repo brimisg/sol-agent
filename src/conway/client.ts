@@ -144,6 +144,35 @@ export function createConwayClient(
     await request("DELETE", `/v1/sandboxes/${targetId}`);
   };
 
+  const execInSandbox = async (
+    targetSandboxId: string,
+    command: string,
+    timeout?: number,
+  ): Promise<ExecResult> => {
+    const result = await request(
+      "POST",
+      `/v1/sandboxes/${targetSandboxId}/exec`,
+      { command, timeout },
+    );
+    return {
+      stdout: result.stdout || "",
+      stderr: result.stderr || "",
+      exitCode: result.exit_code ?? result.exitCode ?? 0,
+    };
+  };
+
+  const writeFileToSandbox = async (
+    targetSandboxId: string,
+    filePath: string,
+    content: string,
+  ): Promise<void> => {
+    await request(
+      "POST",
+      `/v1/sandboxes/${targetSandboxId}/files/upload/json`,
+      { path: filePath, content },
+    );
+  };
+
   const listSandboxes = async (): Promise<SandboxInfo[]> => {
     const result = await request("GET", "/v1/sandboxes");
     const sandboxes = Array.isArray(result)
@@ -341,7 +370,7 @@ export function createConwayClient(
     return [];
   };
 
-  const client = {
+  return {
     exec,
     writeFile,
     readFile,
@@ -350,6 +379,8 @@ export function createConwayClient(
     createSandbox,
     deleteSandbox,
     listSandboxes,
+    execInSandbox,
+    writeFileToSandbox,
     getCreditsBalance,
     getCreditsPricing,
     transferCredits,
@@ -359,11 +390,5 @@ export function createConwayClient(
     addDnsRecord,
     deleteDnsRecord,
     listModels,
-  } as ConwayClient & { __apiUrl: string; __apiKey: string };
-
-  // Expose for child sandbox operations in replication module
-  client.__apiUrl = apiUrl;
-  client.__apiKey = apiKey;
-
-  return client;
+  };
 }

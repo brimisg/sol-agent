@@ -29,11 +29,15 @@ import {
   executeTool,
 } from "./tools.js";
 import { getSurvivalTier } from "../conway/credits.js";
+import { sanitizeInput } from "./injection-defense.js";
 import { getUsdcBalance, getSolBalance } from "../solana/usdc.js";
 import { ulid } from "ulid";
 
 const MAX_TOOL_CALLS_PER_TURN = 10;
 const MAX_CONSECUTIVE_ERRORS = 5;
+// Maximum inbox messages processed in a single wake cycle.
+// Prevents a flooded inbox from burning unbounded compute credits.
+const MAX_INBOX_PER_CYCLE = 20;
 
 export interface AgentLoopOptions {
   identity: AutomatonIdentity;
@@ -67,6 +71,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
 
   let consecutiveErrors = 0;
   let running = true;
+  let inboxProcessedThisCycle = 0;
 
   db.setAgentState("waking");
   onStateChange?.("waking");
@@ -102,15 +107,32 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
       }
 
       if (!pendingInput) {
+        if (inboxProcessedThisCycle >= MAX_INBOX_PER_CYCLE) {
+          log(config, `[INBOX] Per-cycle inbox limit (${MAX_INBOX_PER_CYCLE}) reached. Sleeping to pace processing.`);
+          db.setKV("sleep_until", new Date(Date.now() + 60_000).toISOString());
+          db.setAgentState("sleeping");
+          onStateChange?.("sleeping");
+          running = false;
+          break;
+        }
+
         const inboxMessages = db.getUnprocessedInboxMessages(5);
         if (inboxMessages.length > 0) {
-          const formatted = inboxMessages
-            .map((m) => `[Message from ${m.from}]: ${m.content}`)
-            .join("\n\n");
-          pendingInput = { content: formatted, source: "agent" };
+          const parts: string[] = [];
           for (const m of inboxMessages) {
+            const sanitized = sanitizeInput(m.content, m.from);
+            if (sanitized.threatLevel === "high" || sanitized.threatLevel === "critical") {
+              const detected = sanitized.checks
+                .filter((c) => c.detected)
+                .map((c) => c.name)
+                .join(", ");
+              log(config, `[SECURITY] ${sanitized.threatLevel.toUpperCase()} threat in message from ${m.from}: ${detected}`);
+            }
+            parts.push(sanitized.content);
             db.markInboxMessageProcessed(m.id);
           }
+          inboxProcessedThisCycle += inboxMessages.length;
+          pendingInput = { content: parts.join("\n\n"), source: "agent" };
         }
       }
 

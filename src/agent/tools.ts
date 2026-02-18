@@ -12,6 +12,7 @@ import type {
   ToolCallResult,
   GenesisConfig,
 } from "../types.js";
+import { isProtectedFile } from "../self-mod/code.js";
 
 // ─── Self-Preservation Guard ───────────────────────────────────
 
@@ -91,8 +92,8 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
       execute: async (args, ctx) => {
         const filePath = args.path as string;
-        if (filePath.includes("wallet.json") || filePath.includes("state.db")) {
-          return "Blocked: Cannot overwrite critical identity/state files directly";
+        if (isProtectedFile(filePath)) {
+          return "Blocked: Cannot overwrite protected file";
         }
         await ctx.conway.writeFile(filePath, args.content as string);
         return `File written: ${filePath}`;
