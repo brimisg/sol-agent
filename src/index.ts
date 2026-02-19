@@ -58,6 +58,8 @@ Environment:
   DOCKER_IMAGE             Docker image for child containers
   ANTHROPIC_API_KEY        Anthropic API key (overrides config)
   OPENAI_API_KEY           OpenAI API key (overrides config)
+  INFERENCE_MODEL          Primary inference model (overrides config, e.g. claude-opus-4-6)
+  LOW_COMPUTE_MODEL        Model used in low-compute/critical survival mode
 `);
     process.exit(0);
   }
@@ -169,6 +171,11 @@ async function run(): Promise<void> {
   }
   if (process.env.OPENAI_API_KEY) {
     config.openaiApiKey = process.env.OPENAI_API_KEY;
+  }
+
+  // Override inference model from environment (useful when the default is deprecated)
+  if (process.env.INFERENCE_MODEL) {
+    config.inferenceModel = process.env.INFERENCE_MODEL;
   }
 
   // Build Solana-native identity (sandboxId from container hostname)

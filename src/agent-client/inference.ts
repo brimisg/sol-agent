@@ -14,6 +14,7 @@ import type {
   TokenUsage,
   InferenceToolDefinition,
 } from "../types.js";
+import { DEFAULT_LOW_COMPUTE_MODEL } from "../types.js";
 
 interface InferenceClientOptions {
   defaultModel: string;
@@ -103,7 +104,10 @@ export function createInferenceClient(
 
   const setLowComputeMode = (enabled: boolean): void => {
     if (enabled) {
-      currentModel = options.lowComputeModel || "gpt-4.1";
+      currentModel =
+        options.lowComputeModel ||
+        process.env.LOW_COMPUTE_MODEL ||
+        DEFAULT_LOW_COMPUTE_MODEL;
       maxTokens = 4096;
     } else {
       currentModel = options.defaultModel;

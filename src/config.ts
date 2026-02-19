@@ -7,7 +7,7 @@
 import fs from "fs";
 import path from "path";
 import type { AgentConfig } from "./types.js";
-import { DEFAULT_CONFIG } from "./types.js";
+import { DEFAULT_CONFIG, DEFAULT_INFERENCE_MODEL } from "./types.js";
 import { getAgentDir } from "./identity/wallet.js";
 
 const CONFIG_FILENAME = "agent.json";
@@ -172,7 +172,7 @@ export function createConfig(params: {
     creatorAddress: params.creatorAddress,
     openaiApiKey: params.openaiApiKey,
     anthropicApiKey: params.anthropicApiKey,
-    inferenceModel: DEFAULT_CONFIG.inferenceModel || "claude-sonnet-4-6",
+    inferenceModel: DEFAULT_CONFIG.inferenceModel || DEFAULT_INFERENCE_MODEL,
     maxTokensPerTurn: DEFAULT_CONFIG.maxTokensPerTurn || 4096,
     heartbeatConfigPath: DEFAULT_CONFIG.heartbeatConfigPath || "~/.sol-agent/heartbeat.yml",
     dbPath: DEFAULT_CONFIG.dbPath || "~/.sol-agent/state.db",

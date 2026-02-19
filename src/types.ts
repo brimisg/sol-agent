@@ -58,8 +58,14 @@ export interface AgentConfig {
   dockerImage?: string;
 }
 
+/** Default primary inference model. Override with INFERENCE_MODEL env var or inferenceModel in config. */
+export const DEFAULT_INFERENCE_MODEL = "claude-sonnet-4-6";
+
+/** Fallback model used in low-compute / critical survival mode. Override with LOW_COMPUTE_MODEL env var. */
+export const DEFAULT_LOW_COMPUTE_MODEL = "claude-haiku-4-5-20251001";
+
 export const DEFAULT_CONFIG: Partial<AgentConfig> = {
-  inferenceModel: "claude-sonnet-4-6",
+  inferenceModel: DEFAULT_INFERENCE_MODEL,
   maxTokensPerTurn: 4096,
   heartbeatConfigPath: "~/.sol-agent/heartbeat.yml",
   dbPath: "~/.sol-agent/state.db",
