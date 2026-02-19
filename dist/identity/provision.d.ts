@@ -1,27 +1,23 @@
 /**
- * Sol-Automaton Provisioning
+ * Sol-Automaton Identity Helpers
  *
- * Uses the automaton's Solana wallet to authenticate via ed25519 signature
- * and create an API key for Conway API access.
- * Solana equivalent of SIWE: signs a canonical message with Solana keypair.
+ * Lightweight helpers for reading/writing identity config.
+ * Authentication is handled directly via Solana ed25519 keypair —
+ * no external API provisioning required.
  */
 import type { ProvisionResult } from "../types.js";
 /**
  * Load API key from ~/.sol-automaton/config.json if it exists.
+ * Kept for backward compatibility with configs that stored an apiKey field.
  */
 export declare function loadApiKeyFromConfig(): string | null;
 /**
- * Run the full Solana signature provisioning flow:
- * 1. Load Solana keypair
- * 2. Get nonce from Conway API
- * 3. Sign nonce with ed25519 Solana keypair
- * 4. Verify signature -> get JWT
- * 5. Create API key
- * 6. Save to config.json
+ * Stub provision function — no external API required.
+ * The agent authenticates via its Solana keypair directly.
  */
-export declare function provision(apiUrl?: string): Promise<ProvisionResult>;
+export declare function provision(): Promise<ProvisionResult>;
 /**
- * Register the automaton's creator as its parent with Conway.
+ * Register parent — no-op without external registry.
  */
-export declare function registerParent(creatorAddress: string, apiUrl?: string): Promise<void>;
+export declare function registerParent(_creatorAddress: string): Promise<void>;
 //# sourceMappingURL=provision.d.ts.map

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getSurvivalTier, formatCredits } from "../../conway/credits.js";
+import { getSurvivalTier, formatCredits } from "../../agent-client/credits.js";
 import { SURVIVAL_THRESHOLDS } from "../../types.js";
 
 describe("SURVIVAL_THRESHOLDS constants", () => {

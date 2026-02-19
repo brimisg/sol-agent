@@ -14,6 +14,7 @@
  */
 import fs from "fs";
 import path from "path";
+import { createPatch } from "diff";
 import { logModification } from "./audit-log.js";
 // ─── IMMUTABLE SAFETY INVARIANTS ─────────────────────────────
 // These are hard-coded and CANNOT be changed by the agent.
@@ -120,16 +121,33 @@ function resolveAndValidatePath(filePath) {
  */
 export function isProtectedFile(filePath) {
     const resolved = resolveAndValidatePath(filePath) || filePath;
-    // Check against protected file patterns
+    // Normalise to forward slashes so the checks below work cross-platform.
+    const r = resolved.split(path.sep).join("/");
+    // PROTECTED_FILES entries are file paths (possibly multi-segment, e.g.
+    // "self-mod/code.ts"). A match requires that the resolved path ends with
+    // "/<pattern>" — never just a substring. This prevents a directory named
+    // "state.db" from blocking unrelated files inside it.
     for (const pattern of PROTECTED_FILES) {
-        if (resolved.includes(pattern) || filePath.includes(pattern)) {
+        if (r === pattern || r.endsWith("/" + pattern)) {
             return true;
         }
     }
-    // Check against blocked directory patterns
+    // BLOCKED_DIRECTORY_PATTERNS has two shapes:
+    //   • Absolute paths ("/etc/passwd", "/proc") — match when resolved equals
+    //     the pattern or is a descendant of it.
+    //   • Directory name fragments (".ssh", ".gnupg") — match when any path
+    //     segment equals the pattern exactly.
     for (const pattern of BLOCKED_DIRECTORY_PATTERNS) {
-        if (resolved.includes(pattern) || filePath.includes(pattern)) {
-            return true;
+        if (pattern.startsWith("/")) {
+            if (r === pattern || r.startsWith(pattern + "/")) {
+                return true;
+            }
+        }
+        else {
+            // Split on "/" and check every component for an exact match.
+            if (r.split("/").includes(pattern)) {
+                return true;
+            }
         }
     }
     return false;
@@ -163,7 +181,7 @@ function isRateLimited(db) {
  * 6. Pre-modification git snapshot
  * 7. Audit log entry
  */
-export async function editFile(conway, db, filePath, newContent, reason) {
+export async function editFile(agentClient, db, filePath, newContent, reason) {
     // 1. Protected file check
     if (isProtectedFile(filePath)) {
         return {
@@ -196,7 +214,7 @@ export async function editFile(conway, db, filePath, newContent, reason) {
     // 5. Read current content for diff
     let oldContent = "";
     try {
-        oldContent = await conway.readFile(filePath);
+        oldContent = await agentClient.readFile(filePath);
     }
     catch {
         oldContent = "(new file)";
@@ -204,14 +222,14 @@ export async function editFile(conway, db, filePath, newContent, reason) {
     // 6. Pre-modification git snapshot
     try {
         const { commitStateChange } = await import("../git/state-versioning.js");
-        await commitStateChange(conway, `pre-modify: ${reason}`, "snapshot");
+        await commitStateChange(agentClient, `pre-modify: ${reason}`, "snapshot");
     }
     catch {
         // Git not available -- proceed without snapshot
     }
     // 7. Write new content
     try {
-        await conway.writeFile(filePath, newContent);
+        await agentClient.writeFile(filePath, newContent);
     }
     catch (err) {
         return {
@@ -229,7 +247,7 @@ export async function editFile(conway, db, filePath, newContent, reason) {
     // 9. Post-modification git commit
     try {
         const { commitStateChange } = await import("../git/state-versioning.js");
-        await commitStateChange(conway, reason, "self-mod");
+        await commitStateChange(agentClient, reason, "self-mod");
     }
     catch {
         // Git not available -- proceed without commit
@@ -290,28 +308,13 @@ export function validateModification(db, filePath, contentSize) {
 }
 // ─── Diff Generation ─────────────────────────────────────────
 /**
- * Generate a simple line-based diff between two strings.
+ * Generate a unified diff between two strings using Myers LCS algorithm.
+ * Produces standard unified-diff output suitable for audit logs.
  */
 function generateSimpleDiff(oldContent, newContent) {
-    const oldLines = oldContent.split("\n");
-    const newLines = newContent.split("\n");
-    const lines = [];
-    const maxLines = Math.max(oldLines.length, newLines.length);
-    let changes = 0;
-    for (let i = 0; i < maxLines && changes < 50; i++) {
-        const oldLine = oldLines[i];
-        const newLine = newLines[i];
-        if (oldLine !== newLine) {
-            if (oldLine !== undefined)
-                lines.push(`- ${oldLine}`);
-            if (newLine !== undefined)
-                lines.push(`+ ${newLine}`);
-            changes++;
-        }
-    }
-    if (changes >= 50) {
-        lines.push(`... (${maxLines - 50} more lines changed)`);
-    }
-    return lines.join("\n");
+    // createPatch uses the Myers diff algorithm (LCS-based), so an insertion
+    // only marks the inserted lines as added — it does not cascade false
+    // positives through all subsequent lines the way positional comparison does.
+    return createPatch("file", oldContent, newContent, "", "");
 }
 //# sourceMappingURL=code.js.map

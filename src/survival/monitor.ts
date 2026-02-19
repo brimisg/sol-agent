@@ -9,12 +9,12 @@
 import type {
   AutomatonConfig,
   AutomatonDatabase,
-  ConwayClient,
+  SolanaAgentClient,
   AutomatonIdentity,
   FinancialState,
   SurvivalTier,
 } from "../types.js";
-import { getSurvivalTier, formatCredits } from "../conway/credits.js";
+import { getSurvivalTier, formatCredits } from "../agent-client/credits.js";
 import { getUsdcBalance, getSolBalance } from "../solana/usdc.js";
 
 export interface ResourceStatus {
@@ -30,7 +30,7 @@ export interface ResourceStatus {
  */
 export async function checkResources(
   identity: AutomatonIdentity,
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   db: AutomatonDatabase,
   config?: AutomatonConfig,
 ): Promise<ResourceStatus> {
@@ -41,7 +41,7 @@ export async function checkResources(
   let creditsCents = 0;
   let creditsCheckError: string | undefined;
   try {
-    creditsCents = await conway.getCreditsBalance();
+    creditsCents = await agentClient.getCreditsBalance();
   } catch (err: any) {
     creditsCheckError = err?.message || String(err);
     console.warn(`[monitor] Credits balance check failed: ${creditsCheckError}`);
@@ -70,7 +70,7 @@ export async function checkResources(
   // Check sandbox health
   let sandboxHealthy = true;
   try {
-    const result = await conway.exec("echo ok", 5000);
+    const result = await agentClient.exec("echo ok", 5000);
     sandboxHealthy = result.exitCode === 0;
   } catch {
     sandboxHealthy = false;

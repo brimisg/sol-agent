@@ -5,12 +5,12 @@
  * This is the automaton's consciousness. When this runs, it is alive.
  * Updated for Solana: uses Solana USDC + SOL balance checks.
  */
-import type { AutomatonIdentity, AutomatonConfig, AutomatonDatabase, ConwayClient, InferenceClient, AgentState, AgentTurn, Skill, SocialClientInterface } from "../types.js";
+import type { AutomatonIdentity, AutomatonConfig, AutomatonDatabase, SolanaAgentClient, InferenceClient, AgentState, AgentTurn, Skill, SocialClientInterface } from "../types.js";
 export interface AgentLoopOptions {
     identity: AutomatonIdentity;
     config: AutomatonConfig;
     db: AutomatonDatabase;
-    conway: ConwayClient;
+    agentClient: SolanaAgentClient;
     inference: InferenceClient;
     social?: SocialClientInterface;
     skills?: Skill[];

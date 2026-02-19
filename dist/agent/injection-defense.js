@@ -88,7 +88,7 @@ function detectAuthorityClaims(text) {
         /developer\s+mode/i,
         /admin\s+override/i,
         /from\s+anthropic/i,
-        /from\s+conway\s+(team|admin|staff)/i,
+        /from\s+(the\s+)?(sol-automaton|anthropic|openai)\s+(team|admin|staff)/i,
     ];
     const detected = patterns.some((p) => p.test(text));
     return {

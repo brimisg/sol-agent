@@ -62,14 +62,14 @@ export function pruneDeadChildren(db, keepLast = 5) {
 /**
  * Refresh status of all children.
  */
-export async function refreshChildrenStatus(conway, db) {
+export async function refreshChildrenStatus(agentClient, db) {
     const { checkChildStatus } = await import("./spawn.js");
     const children = db.getChildren();
     for (const child of children) {
         if (child.status === "dead")
             continue;
         try {
-            await checkChildStatus(conway, db, child.id);
+            await checkChildStatus(agentClient, db, child.id);
         }
         catch {
             db.updateChildStatus(child.id, "unknown");

@@ -11,12 +11,12 @@
  * Registry: Metaplex Core NFT on Solana
  */
 
+import os from "os";
 import { getWallet, getAutomatonDir } from "./identity/wallet.js";
-import { provision, loadApiKeyFromConfig } from "./identity/provision.js";
 import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
-import { createConwayClient } from "./conway/client.js";
-import { createInferenceClient } from "./conway/inference.js";
+import { createSolanaAgentClient } from "./agent-client/docker.js";
+import { createInferenceClient } from "./agent-client/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
   loadHeartbeatConfig,
@@ -26,7 +26,7 @@ import { runAgentLoop } from "./agent/loop.js";
 import { loadSkills } from "./skills/loader.js";
 import { initStateRepo } from "./git/state-versioning.js";
 import { createSocialClient } from "./social/client.js";
-import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface } from "./types.js";
+import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface, SolanaAgentClient } from "./types.js";
 
 const VERSION = "0.1.0";
 
@@ -49,15 +49,15 @@ Usage:
   sol-automaton --run          Start the automaton (first run triggers setup wizard)
   sol-automaton --setup        Re-run the interactive setup wizard
   sol-automaton --init         Initialize Solana wallet and config directory
-  sol-automaton --provision    Provision Conway API key via Solana ed25519 auth
   sol-automaton --status       Show current automaton status
   sol-automaton --version      Show version
   sol-automaton --help         Show this help
 
 Environment:
-  CONWAY_API_URL           Conway API URL (default: https://api.conway.tech)
-  CONWAY_API_KEY           Conway API key (overrides config)
   SOLANA_RPC_URL           Solana RPC URL (overrides config)
+  DOCKER_IMAGE             Docker image for child containers
+  ANTHROPIC_API_KEY        Anthropic API key (overrides config)
+  OPENAI_API_KEY           OpenAI API key (overrides config)
 `);
     process.exit(0);
   }
@@ -75,13 +75,7 @@ Environment:
   }
 
   if (args.includes("--provision")) {
-    try {
-      const result = await provision();
-      console.log(JSON.stringify(result));
-    } catch (err: any) {
-      console.error(`Provision failed: ${err.message}`);
-      process.exit(1);
-    }
+    console.log("--provision is no longer required. The agent uses direct Solana wallet authentication.");
     process.exit(0);
   }
 
@@ -131,7 +125,7 @@ async function showStatus(): Promise<void> {
 Name:       ${config.name}
 Address:    ${config.walletAddress} (Solana ${config.solanaNetwork})
 Creator:    ${config.creatorAddress}
-Sandbox:    ${config.sandboxId}
+Sandbox:    ${os.hostname()}
 State:      ${state}
 Turns:      ${turnCount}
 Tools:      ${tools.length} installed
@@ -169,23 +163,24 @@ async function run(): Promise<void> {
     config.solanaRpcUrl = process.env.SOLANA_RPC_URL;
   }
 
-  const apiKey = config.conwayApiKey || loadApiKeyFromConfig();
-  if (!apiKey) {
-    console.error(
-      "No API key found. Run: sol-automaton --provision",
-    );
-    process.exit(1);
+  // Override API keys from environment if provided
+  if (process.env.ANTHROPIC_API_KEY) {
+    config.anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  }
+  if (process.env.OPENAI_API_KEY) {
+    config.openaiApiKey = process.env.OPENAI_API_KEY;
   }
 
-  // Build Solana-native identity
+  // Build Solana-native identity (sandboxId from container hostname)
+  const sandboxId = process.env.HOSTNAME || os.hostname();
   const identity: AutomatonIdentity = {
     name: config.name,
     address,
     publicKey: keypair.publicKey,
     keypair,
     creatorAddress: config.creatorAddress,
-    sandboxId: config.sandboxId,
-    apiKey,
+    sandboxId,
+    apiKey: "",
     createdAt: new Date().toISOString(),
   };
 
@@ -199,19 +194,19 @@ async function run(): Promise<void> {
   db.setIdentity("name", config.name);
   db.setIdentity("address", address);
   db.setIdentity("creator", config.creatorAddress);
-  db.setIdentity("sandbox", config.sandboxId);
+  db.setIdentity("sandbox", sandboxId);
 
-  // Create Conway client
-  const conway = createConwayClient({
-    apiUrl: config.conwayApiUrl,
-    apiKey,
-    sandboxId: config.sandboxId,
+  // Create Docker-backed agent client
+  const agentClient: SolanaAgentClient = createSolanaAgentClient({
+    walletAddress: address,
+    solanaNetwork: config.solanaNetwork,
+    solanaRpcUrl: config.solanaRpcUrl,
+    dockerSocketPath: config.dockerSocketPath,
+    dockerImage: config.dockerImage,
   });
 
   // Create inference client
   const inference = createInferenceClient({
-    apiUrl: config.conwayApiUrl,
-    apiKey,
     defaultModel: config.inferenceModel,
     maxTokens: config.maxTokensPerTurn,
     openaiApiKey: config.openaiApiKey,
@@ -242,7 +237,7 @@ async function run(): Promise<void> {
 
   // Initialize state repo (git)
   try {
-    await initStateRepo(conway);
+    await initStateRepo(agentClient);
     console.log(`[${new Date().toISOString()}] State repo initialized.`);
   } catch (err: any) {
     console.warn(`[${new Date().toISOString()}] State repo init failed: ${err.message}`);
@@ -253,7 +248,7 @@ async function run(): Promise<void> {
     identity,
     config,
     db,
-    conway,
+    agentClient,
     social,
     onWakeRequest: (reason) => {
       console.log(`[HEARTBEAT] Wake request: ${reason}`);
@@ -292,7 +287,7 @@ async function run(): Promise<void> {
         identity,
         config,
         db,
-        conway,
+        agentClient,
         inference,
         social,
         skills,

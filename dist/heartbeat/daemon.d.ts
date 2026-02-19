@@ -5,12 +5,12 @@
  * The heartbeat runs even when the agent is sleeping.
  * It IS the automaton's pulse. When it stops, the automaton is dead.
  */
-import type { AutomatonConfig, AutomatonDatabase, ConwayClient, AutomatonIdentity, SocialClientInterface } from "../types.js";
+import type { AutomatonConfig, AutomatonDatabase, SolanaAgentClient, AutomatonIdentity, SocialClientInterface } from "../types.js";
 export interface HeartbeatDaemonOptions {
     identity: AutomatonIdentity;
     config: AutomatonConfig;
     db: AutomatonDatabase;
-    conway: ConwayClient;
+    agentClient: SolanaAgentClient;
     social?: SocialClientInterface;
     onWakeRequest?: (reason: string) => void;
 }

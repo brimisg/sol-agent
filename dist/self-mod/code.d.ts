@@ -12,7 +12,7 @@
  * - Symlink resolution before path validation
  * - Maximum diff size enforcement
  */
-import type { ConwayClient, AutomatonDatabase } from "../types.js";
+import type { SolanaAgentClient, AutomatonDatabase } from "../types.js";
 /**
  * Check if a file path is protected from modification.
  */
@@ -31,7 +31,7 @@ export declare function isProtectedFile(filePath: string): boolean;
  * 6. Pre-modification git snapshot
  * 7. Audit log entry
  */
-export declare function editFile(conway: ConwayClient, db: AutomatonDatabase, filePath: string, newContent: string, reason: string): Promise<{
+export declare function editFile(agentClient: SolanaAgentClient, db: AutomatonDatabase, filePath: string, newContent: string, reason: string): Promise<{
     success: boolean;
     error?: string;
 }>;

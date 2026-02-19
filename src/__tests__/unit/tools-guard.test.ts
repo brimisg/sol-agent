@@ -9,14 +9,14 @@ const mockWriteFile = vi.fn().mockResolvedValue(undefined);
 
 const mockCtx = {
   identity: { sandboxId: SANDBOX_ID } as ToolContext["identity"],
-  conway: { exec: mockExec, writeFile: mockWriteFile } as unknown as ToolContext["conway"],
+  agentClient: { exec: mockExec, writeFile: mockWriteFile } as unknown as ToolContext["agentClient"],
   config: {} as ToolContext["config"],
   db: {} as ToolContext["db"],
   inference: {} as ToolContext["inference"],
 } as ToolContext;
 
-let execTool: (typeof ReturnType<typeof createBuiltinTools>)[number];
-let writeFileTool: (typeof ReturnType<typeof createBuiltinTools>)[number];
+let execTool: ReturnType<typeof createBuiltinTools>[number];
+let writeFileTool: ReturnType<typeof createBuiltinTools>[number];
 
 beforeEach(() => {
   mockExec.mockClear();

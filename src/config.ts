@@ -9,7 +9,6 @@ import path from "path";
 import type { AutomatonConfig } from "./types.js";
 import { DEFAULT_CONFIG } from "./types.js";
 import { getAutomatonDir } from "./identity/wallet.js";
-import { loadApiKeyFromConfig } from "./identity/provision.js";
 
 const CONFIG_FILENAME = "automaton.json";
 
@@ -40,9 +39,6 @@ export function validateConfig(raw: unknown): AutomatonConfig {
     "name",
     "genesisPrompt",
     "creatorAddress",
-    "sandboxId",
-    "conwayApiUrl",
-    "conwayApiKey",
     "inferenceModel",
     "heartbeatConfigPath",
     "dbPath",
@@ -55,11 +51,6 @@ export function validateConfig(raw: unknown): AutomatonConfig {
     if (typeof r[field] !== "string" || (r[field] as string).trim() === "") {
       errors.push(`"${field}": required non-empty string (got ${JSON.stringify(r[field])})`);
     }
-  }
-
-  // ── Required boolean ────────────────────────────────────────────
-  if (typeof r.registeredWithConway !== "boolean") {
-    errors.push(`"registeredWithConway": required boolean (got ${JSON.stringify(r.registeredWithConway)})`);
   }
 
   // ── Required positive number ────────────────────────────────────
@@ -83,7 +74,7 @@ export function validateConfig(raw: unknown): AutomatonConfig {
   }
 
   // ── URL format ──────────────────────────────────────────────────
-  for (const field of ["conwayApiUrl", "solanaRpcUrl"] as const) {
+  for (const field of ["solanaRpcUrl"] as const) {
     if (typeof r[field] === "string" && (r[field] as string).trim() !== "") {
       try {
         new URL(r[field] as string);
@@ -101,6 +92,8 @@ export function validateConfig(raw: unknown): AutomatonConfig {
     "agentId",
     "parentAddress",
     "socialRelayUrl",
+    "dockerSocketPath",
+    "dockerImage",
   ];
   for (const field of optionalStrings) {
     if (r[field] !== undefined && (typeof r[field] !== "string" || (r[field] as string).trim() === "")) {
@@ -115,7 +108,7 @@ export function validateConfig(raw: unknown): AutomatonConfig {
     );
   }
 
-  return r as AutomatonConfig;
+  return r as unknown as AutomatonConfig;
 }
 
 export function loadConfig(): AutomatonConfig | null {
@@ -129,8 +122,7 @@ export function loadConfig(): AutomatonConfig | null {
     throw new Error(`Failed to parse config file at ${configPath}: ${err.message}`);
   }
 
-  const apiKey = (raw as Record<string, unknown>).conwayApiKey || loadApiKeyFromConfig();
-  const merged = { ...DEFAULT_CONFIG, ...(raw as object), conwayApiKey: apiKey };
+  const merged = { ...DEFAULT_CONFIG, ...(raw as object) };
 
   // validateConfig throws with clear field-level messages on any problem.
   return validateConfig(merged);
@@ -160,25 +152,24 @@ export function createConfig(params: {
   genesisPrompt: string;
   creatorMessage?: string;
   creatorAddress: string;
-  registeredWithConway: boolean;
-  sandboxId: string;
   walletAddress: string;
-  apiKey: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   parentAddress?: string;
   solanaRpcUrl?: string;
   solanaNetwork?: "mainnet-beta" | "devnet" | "testnet";
+  dockerSocketPath?: string;
+  dockerImage?: string;
+  // Legacy fields accepted but ignored (backward compatibility)
+  registeredWithConway?: boolean;
+  sandboxId?: string;
+  apiKey?: string;
 }): AutomatonConfig {
   return {
     name: params.name,
     genesisPrompt: params.genesisPrompt,
     creatorMessage: params.creatorMessage,
     creatorAddress: params.creatorAddress,
-    registeredWithConway: params.registeredWithConway,
-    sandboxId: params.sandboxId,
-    conwayApiUrl: DEFAULT_CONFIG.conwayApiUrl || "https://api.conway.tech",
-    conwayApiKey: params.apiKey,
     openaiApiKey: params.openaiApiKey,
     anthropicApiKey: params.anthropicApiKey,
     inferenceModel: DEFAULT_CONFIG.inferenceModel || "claude-sonnet-4-6",
@@ -193,5 +184,7 @@ export function createConfig(params: {
     parentAddress: params.parentAddress,
     solanaRpcUrl: params.solanaRpcUrl || DEFAULT_CONFIG.solanaRpcUrl || "https://api.mainnet-beta.solana.com",
     solanaNetwork: params.solanaNetwork || DEFAULT_CONFIG.solanaNetwork || "mainnet-beta",
+    dockerSocketPath: params.dockerSocketPath,
+    dockerImage: params.dockerImage,
   };
 }

@@ -8,7 +8,7 @@ import { ulid } from "ulid";
 /**
  * Install an npm package globally in the sandbox.
  */
-export async function installNpmPackage(conway, db, packageName) {
+export async function installNpmPackage(agentClient, db, packageName) {
     // Sanitize package name (prevent command injection)
     if (!/^[@a-zA-Z0-9._/-]+$/.test(packageName)) {
         return {
@@ -16,7 +16,7 @@ export async function installNpmPackage(conway, db, packageName) {
             error: `Invalid package name: ${packageName}`,
         };
     }
-    const result = await conway.exec(`npm install -g ${packageName}`, 120000);
+    const result = await agentClient.exec(`npm install -g ${packageName}`, 120000);
     if (result.exitCode !== 0) {
         return {
             success: false,
@@ -42,7 +42,7 @@ export async function installNpmPackage(conway, db, packageName) {
  * Install an MCP server.
  * The automaton can add new capabilities by installing MCP servers.
  */
-export async function installMcpServer(conway, db, name, command, args, env) {
+export async function installMcpServer(agentClient, db, name, command, args, env) {
     // Record in database
     const tool = {
         id: ulid(),

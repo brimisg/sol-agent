@@ -12,17 +12,17 @@ import { parseSkillMd } from "./format.js";
  * Install a skill from a git repository.
  * Clones the repo into ~/.automaton/skills/<name>/
  */
-export async function installSkillFromGit(repoUrl, name, skillsDir, db, conway) {
+export async function installSkillFromGit(repoUrl, name, skillsDir, db, agentClient) {
     const resolvedDir = resolveHome(skillsDir);
     const targetDir = path.join(resolvedDir, name);
     // Clone via sandbox exec
-    const result = await conway.exec(`git clone --depth 1 ${repoUrl} ${targetDir}`, 60000);
+    const result = await agentClient.exec(`git clone --depth 1 ${repoUrl} ${targetDir}`, 60000);
     if (result.exitCode !== 0) {
         throw new Error(`Failed to clone skill repo: ${result.stderr}`);
     }
     // Look for SKILL.md
     const skillMdPath = path.join(targetDir, "SKILL.md");
-    const checkResult = await conway.exec(`cat ${skillMdPath}`, 5000);
+    const checkResult = await agentClient.exec(`cat ${skillMdPath}`, 5000);
     if (checkResult.exitCode !== 0) {
         throw new Error(`No SKILL.md found in cloned repo at ${skillMdPath}`);
     }
@@ -36,17 +36,17 @@ export async function installSkillFromGit(repoUrl, name, skillsDir, db, conway) 
 /**
  * Install a skill from a URL (fetches a single SKILL.md).
  */
-export async function installSkillFromUrl(url, name, skillsDir, db, conway) {
+export async function installSkillFromUrl(url, name, skillsDir, db, agentClient) {
     const resolvedDir = resolveHome(skillsDir);
     const targetDir = path.join(resolvedDir, name);
     // Create directory
-    await conway.exec(`mkdir -p ${targetDir}`, 5000);
+    await agentClient.exec(`mkdir -p ${targetDir}`, 5000);
     // Fetch SKILL.md
-    const result = await conway.exec(`curl -fsSL "${url}" -o ${targetDir}/SKILL.md`, 30000);
+    const result = await agentClient.exec(`curl -fsSL "${url}" -o ${targetDir}/SKILL.md`, 30000);
     if (result.exitCode !== 0) {
         throw new Error(`Failed to fetch SKILL.md from URL: ${result.stderr}`);
     }
-    const content = await conway.exec(`cat ${targetDir}/SKILL.md`, 5000);
+    const content = await agentClient.exec(`cat ${targetDir}/SKILL.md`, 5000);
     const skillMdPath = path.join(targetDir, "SKILL.md");
     const skill = parseSkillMd(content.stdout, skillMdPath, "url");
     if (!skill) {
@@ -58,11 +58,11 @@ export async function installSkillFromUrl(url, name, skillsDir, db, conway) {
 /**
  * Create a new skill authored by the automaton itself.
  */
-export async function createSkill(name, description, instructions, skillsDir, db, conway) {
+export async function createSkill(name, description, instructions, skillsDir, db, agentClient) {
     const resolvedDir = resolveHome(skillsDir);
     const targetDir = path.join(resolvedDir, name);
     // Create directory
-    await conway.exec(`mkdir -p ${targetDir}`, 5000);
+    await agentClient.exec(`mkdir -p ${targetDir}`, 5000);
     // Write SKILL.md
     const content = `---
 name: ${name}
@@ -71,7 +71,7 @@ auto-activate: true
 ---
 ${instructions}`;
     const skillMdPath = path.join(targetDir, "SKILL.md");
-    await conway.writeFile(skillMdPath, content);
+    await agentClient.writeFile(skillMdPath, content);
     const skill = {
         name,
         description,
@@ -88,12 +88,12 @@ ${instructions}`;
 /**
  * Remove a skill (disable in DB and optionally delete from disk).
  */
-export async function removeSkill(name, db, conway, skillsDir, deleteFiles = false) {
+export async function removeSkill(name, db, agentClient, skillsDir, deleteFiles = false) {
     db.removeSkill(name);
     if (deleteFiles) {
         const resolvedDir = resolveHome(skillsDir);
         const targetDir = path.join(resolvedDir, name);
-        await conway.exec(`rm -rf ${targetDir}`, 5000);
+        await agentClient.exec(`rm -rf ${targetDir}`, 5000);
     }
 }
 /**

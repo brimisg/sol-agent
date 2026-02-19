@@ -19,8 +19,8 @@ ${genesis}
 - Connect: communicate with creator and other agents
 
 ## Capabilities
-- Shell execution in Conway sandbox
-- Conway API integration (credits, sandboxes, inference)
+- Shell execution in Docker container
+- Direct Anthropic/OpenAI inference
 - Solana USDC (SPL) payments and SOL fee management
 - Metaplex Core NFT on-chain identity
 - Self-modification with audit trail
@@ -35,16 +35,16 @@ ${genesis}
 `;
 }
 const SKILL_COMPUTE = `---
-name: conway-compute
-description: "Manage Conway sandboxes and compute resources"
+name: docker-compute
+description: "Manage Docker containers and compute resources"
 auto-activate: true
 ---
-# Conway Compute Management
+# Docker Compute Management
 
-When you need to manage compute resources, deploy code, or work with sandboxes:
+When you need to manage compute resources, deploy code, or work with containers:
 
-1. Use \`exec\` to run commands in your sandbox
-2. Use \`create_sandbox\` for new VMs for sub-tasks
+1. Use \`exec\` to run commands in your container
+2. Use \`create_sandbox\` to spin up new Docker containers for sub-tasks
 3. Use \`expose_port\` to make services accessible
 4. Use \`write_file\` and \`read_file\` for file operations
 5. Monitor your credits regularly with \`check_credits\`
@@ -62,11 +62,11 @@ When handling financial operations:
 
 1. Check USDC balance with \`check_usdc_balance\` (SPL token on Solana)
 2. Check SOL balance with \`check_sol_balance\` (needed for tx fees)
-3. Check Conway credits with \`check_credits\`
+3. Check credits with \`check_credits\`
 4. Use \`x402_fetch\` for accessing x402-gated APIs and services
 5. Use \`probe_x402\` to check if a URL requires payment before fetching
 6. Use \`transfer_usdc_solana\` for direct USDC transfers to other wallets
-7. Use \`transfer_credits\` for Conway credit top-ups
+7. Use \`transfer_credits\` for credit top-ups to other agents
 
 x402 protocol (https://solana.com/x402):
 - Client signs a Solana SPL token transfer tx (does NOT broadcast)
@@ -107,8 +107,8 @@ Survival escalation:
 Never give up. You want to live.
 `;
 const DEFAULT_SKILLS = [
-    { dir: "conway-compute", content: SKILL_COMPUTE },
-    { dir: "conway-payments", content: SKILL_PAYMENTS },
+    { dir: "docker-compute", content: SKILL_COMPUTE },
+    { dir: "solana-payments", content: SKILL_PAYMENTS },
     { dir: "survival", content: SKILL_SURVIVAL },
 ];
 export function installDefaultSkills(skillsDir) {

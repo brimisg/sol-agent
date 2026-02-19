@@ -1,8 +1,8 @@
 /**
- * Conway Inference Client
+ * Inference Client
  *
- * Wraps Conway's /v1/chat/completions endpoint (OpenAI-compatible).
- * The automaton pays for its own thinking through Conway credits.
+ * Wraps Anthropic and OpenAI APIs for LLM inference.
+ * The automaton pays for its own thinking through direct API keys.
  */
 
 import type {
@@ -16,8 +16,6 @@ import type {
 } from "../types.js";
 
 interface InferenceClientOptions {
-  apiUrl: string;
-  apiKey: string;
   defaultModel: string;
   maxTokens: number;
   lowComputeModel?: string;
@@ -25,14 +23,21 @@ interface InferenceClientOptions {
   anthropicApiKey?: string;
 }
 
-type InferenceBackend = "conway" | "openai" | "anthropic";
+type InferenceBackend = "openai" | "anthropic" | "unknown";
 
 export function createInferenceClient(
   options: InferenceClientOptions,
 ): InferenceClient {
-  const { apiUrl, apiKey, openaiApiKey, anthropicApiKey } = options;
+  const { openaiApiKey, anthropicApiKey } = options;
   let currentModel = options.defaultModel;
   let maxTokens = options.maxTokens;
+
+  // Validate that at least one inference API key is set
+  if (!anthropicApiKey && !openaiApiKey) {
+    throw new Error(
+      "No inference API key configured. Set anthropicApiKey or openaiApiKey in config.",
+    );
+  }
 
   const chat = async (
     messages: ChatMessage[],
@@ -82,17 +87,17 @@ export function createInferenceClient(
       });
     }
 
-    const openAiLikeApiUrl =
-      backend === "openai" ? "https://api.openai.com" : apiUrl;
-    const openAiLikeApiKey =
-      backend === "openai" ? (openaiApiKey as string) : apiKey;
+    if (backend !== "openai") {
+      throw new Error(
+        `No inference API key configured for model "${model}". Set anthropicApiKey (for claude-* models) or openaiApiKey (for gpt-*/o-series models) in config.`,
+      );
+    }
 
     return chatViaOpenAiCompatible({
       model,
       body,
-      apiUrl: openAiLikeApiUrl,
-      apiKey: openAiLikeApiKey,
-      backend,
+      apiUrl: "https://api.openai.com",
+      apiKey: openaiApiKey as string,
     });
   };
 
@@ -145,7 +150,7 @@ function resolveInferenceBackend(
   if (keys.openaiApiKey && /^(gpt|o[1-9]|chatgpt)/i.test(model)) {
     return "openai";
   }
-  return "conway";
+  return "unknown";
 }
 
 async function chatViaOpenAiCompatible(params: {
@@ -153,16 +158,12 @@ async function chatViaOpenAiCompatible(params: {
   body: Record<string, unknown>;
   apiUrl: string;
   apiKey: string;
-  backend: "conway" | "openai";
 }): Promise<InferenceResponse> {
   const resp = await fetch(`${params.apiUrl}/v1/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization:
-        params.backend === "openai"
-          ? `Bearer ${params.apiKey}`
-          : params.apiKey,
+      Authorization: `Bearer ${params.apiKey}`,
     },
     body: JSON.stringify(params.body),
   });
@@ -170,7 +171,7 @@ async function chatViaOpenAiCompatible(params: {
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(
-      `Inference error (${params.backend}): ${resp.status}: ${text}`,
+      `Inference error (openai): ${resp.status}: ${text}`,
     );
   }
 

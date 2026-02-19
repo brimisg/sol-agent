@@ -1,8 +1,8 @@
 /**
  * Spawn (Solana)
  *
- * Spawn child automatons in new Conway sandboxes.
- * The parent creates a new sandbox, installs the runtime,
+ * Spawn child automatons in new Docker containers.
+ * The parent creates a new container, installs the runtime,
  * writes a genesis config, funds the child, and starts it.
  * The child generates its own Solana ed25519 keypair on first run.
  */
@@ -10,7 +10,7 @@
 import fs from "fs";
 import pathLib from "path";
 import type {
-  ConwayClient,
+  SolanaAgentClient,
   AutomatonIdentity,
   AutomatonDatabase,
   ChildAutomaton,
@@ -20,10 +20,10 @@ import { MAX_CHILDREN } from "../types.js";
 import { ulid } from "ulid";
 
 /**
- * Spawn a child automaton in a new Conway sandbox.
+ * Spawn a child automaton in a new Docker container.
  */
 export async function spawnChild(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   identity: AutomatonIdentity,
   db: AutomatonDatabase,
   genesis: GenesisConfig,
@@ -41,7 +41,7 @@ export async function spawnChild(
   const childId = ulid();
 
   // 1. Create a new sandbox for the child
-  const sandbox = await conway.createSandbox({
+  const sandbox = await agentClient.createSandbox({
     name: `sol-automaton-child-${genesis.name.toLowerCase().replace(/\s+/g, "-")}`,
     vcpu: 1,
     memoryMb: 512,
@@ -63,12 +63,12 @@ export async function spawnChild(
   db.insertChild(child);
 
   // 2. Install Node.js and the sol-automaton runtime in the child sandbox
-  await conway.execInSandbox(sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
+  await agentClient.execInSandbox(sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
 
   // 3. Install the sol-automaton runtime
-  await conway.execInSandbox(
+  await agentClient.execInSandbox(
     sandbox.id,
-    "npm install -g @conway/sol-automaton@latest 2>/dev/null || true",
+    "npm install -g @sol-automaton/runtime@latest 2>/dev/null || true",
     60000,
   );
 
@@ -86,7 +86,7 @@ export async function spawnChild(
   );
 
   await writeInChildSandbox(
-    conway,
+    agentClient,
     sandbox.id,
     "/root/.sol-automaton/genesis.json",
     genesisJson,
@@ -101,13 +101,13 @@ export async function spawnChild(
   try {
     const constitution = fs.readFileSync(constitutionPath, "utf-8");
     await writeInChildSandbox(
-      conway,
+      agentClient,
       sandbox.id,
       "/root/.sol-automaton/constitution.md",
       constitution,
     );
     // Make it read-only in the child
-    await conway.execInSandbox(sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
+    await agentClient.execInSandbox(sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
   } catch {
     // Constitution file not found locally — child will get it from the repo on build
   }
@@ -128,7 +128,7 @@ export async function spawnChild(
  * Start a child automaton after setup.
  */
 export async function startChild(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   db: AutomatonDatabase,
   childId: string,
 ): Promise<void> {
@@ -136,7 +136,7 @@ export async function startChild(
   if (!child) throw new Error(`Child ${childId} not found`);
 
   // Initialize wallet (generates Solana keypair), provision, and run
-  await conway.execInSandbox(
+  await agentClient.execInSandbox(
     child.sandboxId,
     "sol-automaton --init && sol-automaton --provision && systemctl start sol-automaton 2>/dev/null || sol-automaton --run &",
     60000,
@@ -149,7 +149,7 @@ export async function startChild(
  * Check a child's status.
  */
 export async function checkChildStatus(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   db: AutomatonDatabase,
   childId: string,
 ): Promise<string> {
@@ -157,7 +157,7 @@ export async function checkChildStatus(
   if (!child) throw new Error(`Child ${childId} not found`);
 
   try {
-    const result = await conway.execInSandbox(
+    const result = await agentClient.execInSandbox(
       child.sandboxId,
       "sol-automaton --status 2>/dev/null || echo 'offline'",
       10000,
@@ -185,7 +185,7 @@ export async function checkChildStatus(
  * Send a message to a child automaton.
  */
 export async function messageChild(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   db: AutomatonDatabase,
   childId: string,
   message: string,
@@ -201,7 +201,7 @@ export async function messageChild(
   });
 
   await writeInChildSandbox(
-    conway,
+    agentClient,
     child.sandboxId,
     `/root/.sol-automaton/inbox/${ulid()}.json`,
     msgJson,
@@ -224,7 +224,7 @@ function shellQuote(str: string): string {
  * Validates the path and shell-quotes the directory to prevent injection.
  */
 async function writeInChildSandbox(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   sandboxId: string,
   filePath: string,
   content: string,
@@ -236,6 +236,6 @@ async function writeInChildSandbox(
     throw new Error(`writeInChildSandbox: filePath must not contain '..', got: ${filePath}`);
   }
   const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-  await conway.execInSandbox(sandboxId, `mkdir -p ${shellQuote(dir)}`, 5000);
-  await conway.writeFileToSandbox(sandboxId, filePath, content);
+  await agentClient.execInSandbox(sandboxId, `mkdir -p ${shellQuote(dir)}`, 5000);
+  await agentClient.writeFileToSandbox(sandboxId, filePath, content);
 }

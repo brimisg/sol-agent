@@ -29,10 +29,6 @@ export interface AutomatonConfig {
     genesisPrompt: string;
     creatorMessage?: string;
     creatorAddress: string;
-    registeredWithConway: boolean;
-    sandboxId: string;
-    conwayApiUrl: string;
-    conwayApiKey: string;
     openaiApiKey?: string;
     anthropicApiKey?: string;
     inferenceModel: string;
@@ -49,6 +45,8 @@ export interface AutomatonConfig {
     socialRelayUrl?: string;
     solanaRpcUrl: string;
     solanaNetwork: "mainnet-beta" | "devnet" | "testnet";
+    dockerSocketPath?: string;
+    dockerImage?: string;
 }
 export declare const DEFAULT_CONFIG: Partial<AutomatonConfig>;
 export type AgentState = "setup" | "waking" | "running" | "sleeping" | "low_compute" | "critical" | "dead";
@@ -85,12 +83,12 @@ export interface AutomatonTool {
     dangerous?: boolean;
     category: ToolCategory;
 }
-export type ToolCategory = "vm" | "conway" | "self_mod" | "financial" | "survival" | "skills" | "git" | "registry" | "replication" | "solana";
+export type ToolCategory = "vm" | "agent" | "self_mod" | "financial" | "survival" | "skills" | "git" | "registry" | "replication" | "solana";
 export interface ToolContext {
     identity: AutomatonIdentity;
     config: AutomatonConfig;
     db: AutomatonDatabase;
-    conway: ConwayClient;
+    agentClient: SolanaAgentClient;
     inference: InferenceClient;
     social?: SocialClientInterface;
 }
@@ -112,6 +110,14 @@ export interface InboxMessage {
     signedAt: string;
     createdAt: string;
     replyTo?: string;
+    /** Base58-encoded ed25519 detached signature from the sender, if available. */
+    signature?: string;
+    /**
+     * true  – signature was present and verified against `from`
+     * false – signature was absent (relay did not forward it, or non-agent sender)
+     * undefined – not checked (e.g. message inserted outside the relay path)
+     */
+    verified?: boolean;
 }
 export interface HeartbeatEntry {
     name: string;
@@ -143,6 +149,12 @@ export interface FinancialState {
     usdcBalance: number;
     solBalance: number;
     lastChecked: string;
+    /** Set when the credits API call failed — balance may be non-zero even if creditsCents === 0. */
+    creditsCheckError?: string;
+    /** Set when the USDC RPC call failed. */
+    usdcCheckError?: string;
+    /** Set when the SOL RPC call failed. */
+    solCheckError?: string;
 }
 export type SurvivalTier = "normal" | "low_compute" | "critical" | "dead";
 export declare const SURVIVAL_THRESHOLDS: {
@@ -220,10 +232,12 @@ export interface InferenceToolDefinition {
         parameters: Record<string, unknown>;
     };
 }
-export interface ConwayClient {
+export interface SolanaAgentClient {
     exec(command: string, timeout?: number): Promise<ExecResult>;
     writeFile(path: string, content: string): Promise<void>;
     readFile(path: string): Promise<string>;
+    execInSandbox(sandboxId: string, command: string, timeout?: number): Promise<ExecResult>;
+    writeFileToSandbox(sandboxId: string, filePath: string, content: string): Promise<void>;
     exposePort(port: number): Promise<PortInfo>;
     removePort(port: number): Promise<void>;
     createSandbox(options: CreateSandboxOptions): Promise<SandboxInfo>;

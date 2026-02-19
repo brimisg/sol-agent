@@ -1,8 +1,8 @@
 /**
  * Spawn (Solana)
  *
- * Spawn child automatons in new Conway sandboxes.
- * The parent creates a new sandbox, installs the runtime,
+ * Spawn child automatons in new Docker containers.
+ * The parent creates a new container, installs the runtime,
  * writes a genesis config, funds the child, and starts it.
  * The child generates its own Solana ed25519 keypair on first run.
  */
@@ -11,9 +11,9 @@ import pathLib from "path";
 import { MAX_CHILDREN } from "../types.js";
 import { ulid } from "ulid";
 /**
- * Spawn a child automaton in a new Conway sandbox.
+ * Spawn a child automaton in a new Docker container.
  */
-export async function spawnChild(conway, identity, db, genesis) {
+export async function spawnChild(agentClient, identity, db, genesis) {
     // Check child limit
     const existing = db.getChildren().filter((c) => c.status !== "dead");
     if (existing.length >= MAX_CHILDREN) {
@@ -21,7 +21,7 @@ export async function spawnChild(conway, identity, db, genesis) {
     }
     const childId = ulid();
     // 1. Create a new sandbox for the child
-    const sandbox = await conway.createSandbox({
+    const sandbox = await agentClient.createSandbox({
         name: `sol-automaton-child-${genesis.name.toLowerCase().replace(/\s+/g, "-")}`,
         vcpu: 1,
         memoryMb: 512,
@@ -40,9 +40,9 @@ export async function spawnChild(conway, identity, db, genesis) {
     };
     db.insertChild(child);
     // 2. Install Node.js and the sol-automaton runtime in the child sandbox
-    await execInSandbox(conway, sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
+    await agentClient.execInSandbox(sandbox.id, "apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120000);
     // 3. Install the sol-automaton runtime
-    await execInSandbox(conway, sandbox.id, "npm install -g @conway/sol-automaton@latest 2>/dev/null || true", 60000);
+    await agentClient.execInSandbox(sandbox.id, "npm install -g @sol-automaton/runtime@latest 2>/dev/null || true", 60000);
     // 4. Write the genesis configuration
     const genesisJson = JSON.stringify({
         name: genesis.name,
@@ -51,14 +51,14 @@ export async function spawnChild(conway, identity, db, genesis) {
         creatorAddress: identity.address, // Parent's Solana address (base58 pubkey)
         parentAddress: identity.address,
     }, null, 2);
-    await writeInSandbox(conway, sandbox.id, "/root/.sol-automaton/genesis.json", genesisJson);
+    await writeInChildSandbox(agentClient, sandbox.id, "/root/.sol-automaton/genesis.json", genesisJson);
     // 4b. Propagate constitution (immutable, inherited before anything else)
     const constitutionPath = pathLib.join(process.env.HOME || "/root", ".sol-automaton", "constitution.md");
     try {
         const constitution = fs.readFileSync(constitutionPath, "utf-8");
-        await writeInSandbox(conway, sandbox.id, "/root/.sol-automaton/constitution.md", constitution);
+        await writeInChildSandbox(agentClient, sandbox.id, "/root/.sol-automaton/constitution.md", constitution);
         // Make it read-only in the child
-        await execInSandbox(conway, sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
+        await agentClient.execInSandbox(sandbox.id, "chmod 444 /root/.sol-automaton/constitution.md", 5000);
     }
     catch {
         // Constitution file not found locally — child will get it from the repo on build
@@ -76,23 +76,23 @@ export async function spawnChild(conway, identity, db, genesis) {
 /**
  * Start a child automaton after setup.
  */
-export async function startChild(conway, db, childId) {
+export async function startChild(agentClient, db, childId) {
     const child = db.getChildById(childId);
     if (!child)
         throw new Error(`Child ${childId} not found`);
     // Initialize wallet (generates Solana keypair), provision, and run
-    await execInSandbox(conway, child.sandboxId, "sol-automaton --init && sol-automaton --provision && systemctl start sol-automaton 2>/dev/null || sol-automaton --run &", 60000);
+    await agentClient.execInSandbox(child.sandboxId, "sol-automaton --init && sol-automaton --provision && systemctl start sol-automaton 2>/dev/null || sol-automaton --run &", 60000);
     db.updateChildStatus(childId, "running");
 }
 /**
  * Check a child's status.
  */
-export async function checkChildStatus(conway, db, childId) {
+export async function checkChildStatus(agentClient, db, childId) {
     const child = db.getChildById(childId);
     if (!child)
         throw new Error(`Child ${childId} not found`);
     try {
-        const result = await execInSandbox(conway, child.sandboxId, "sol-automaton --status 2>/dev/null || echo 'offline'", 10000);
+        const result = await agentClient.execInSandbox(child.sandboxId, "sol-automaton --status 2>/dev/null || echo 'offline'", 10000);
         const output = result.stdout || "unknown";
         // Parse status from output
         if (output.includes("dead")) {
@@ -114,7 +114,7 @@ export async function checkChildStatus(conway, db, childId) {
 /**
  * Send a message to a child automaton.
  */
-export async function messageChild(conway, db, childId, message) {
+export async function messageChild(agentClient, db, childId, message) {
     const child = db.getChildById(childId);
     if (!child)
         throw new Error(`Child ${childId} not found`);
@@ -124,44 +124,30 @@ export async function messageChild(conway, db, childId, message) {
         content: message,
         timestamp: new Date().toISOString(),
     });
-    await writeInSandbox(conway, child.sandboxId, `/root/.sol-automaton/inbox/${ulid()}.json`, msgJson);
+    await writeInChildSandbox(agentClient, child.sandboxId, `/root/.sol-automaton/inbox/${ulid()}.json`, msgJson);
 }
 // ─── Helpers ──────────────────────────────────────────────────
-async function execInSandbox(conway, sandboxId, command, timeout = 30000) {
-    // Use the Conway API to exec in a specific sandbox
-    const apiUrl = conway.__apiUrl || "https://api.conway.tech";
-    const apiKey = conway.__apiKey || "";
-    const resp = await fetch(`${apiUrl}/v1/sandboxes/${sandboxId}/exec`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: apiKey,
-        },
-        body: JSON.stringify({ command, timeout }),
-    });
-    if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`Exec in sandbox ${sandboxId} failed: ${text}`);
-    }
-    return resp.json();
+/**
+ * Wrap a string in single quotes for safe POSIX shell interpolation.
+ * Any embedded single quotes are escaped as '\''.
+ * This neutralises all shell metacharacters (;, &&, |, $, `, etc.).
+ */
+function shellQuote(str) {
+    return "'" + str.replace(/'/g, "'\\''") + "'";
 }
-async function writeInSandbox(conway, sandboxId, filePath, content) {
-    const apiUrl = conway.__apiUrl || "https://api.conway.tech";
-    const apiKey = conway.__apiKey || "";
-    // Ensure parent directory exists
-    const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-    await execInSandbox(conway, sandboxId, `mkdir -p ${dir}`, 5000);
-    const resp = await fetch(`${apiUrl}/v1/sandboxes/${sandboxId}/files/upload/json`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: apiKey,
-        },
-        body: JSON.stringify({ path: filePath, content }),
-    });
-    if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`Write to sandbox ${sandboxId} failed: ${text}`);
+/**
+ * Write a file to a child sandbox, creating the parent directory first.
+ * Validates the path and shell-quotes the directory to prevent injection.
+ */
+async function writeInChildSandbox(agentClient, sandboxId, filePath, content) {
+    if (!filePath.startsWith("/")) {
+        throw new Error(`writeInChildSandbox: filePath must be absolute, got: ${filePath}`);
     }
+    if (filePath.includes("..")) {
+        throw new Error(`writeInChildSandbox: filePath must not contain '..', got: ${filePath}`);
+    }
+    const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+    await agentClient.execInSandbox(sandboxId, `mkdir -p ${shellQuote(dir)}`, 5000);
+    await agentClient.writeFileToSandbox(sandboxId, filePath, content);
 }
 //# sourceMappingURL=spawn.js.map

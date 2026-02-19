@@ -4,12 +4,12 @@
  * These tasks run on the heartbeat schedule even while the agent sleeps.
  * Updated for Solana: uses SPL USDC balance, Solana-native checks.
  */
-import type { AutomatonConfig, AutomatonDatabase, ConwayClient, AutomatonIdentity, SocialClientInterface } from "../types.js";
+import type { AutomatonConfig, AutomatonDatabase, SolanaAgentClient, AutomatonIdentity, SocialClientInterface } from "../types.js";
 export interface HeartbeatTaskContext {
     identity: AutomatonIdentity;
     config: AutomatonConfig;
     db: AutomatonDatabase;
-    conway: ConwayClient;
+    agentClient: SolanaAgentClient;
     social?: SocialClientInterface;
 }
 export type HeartbeatTaskFn = (ctx: HeartbeatTaskContext) => Promise<{

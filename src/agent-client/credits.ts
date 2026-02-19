@@ -5,11 +5,7 @@
  * survival mode transitions.
  */
 
-import type {
-  ConwayClient,
-  FinancialState,
-  SurvivalTier,
-} from "../types.js";
+import type { SurvivalTier } from "../types.js";
 import { SURVIVAL_THRESHOLDS } from "../types.js";
 
 /**

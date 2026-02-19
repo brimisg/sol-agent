@@ -4,14 +4,14 @@
  * These tasks run on the heartbeat schedule even while the agent sleeps.
  * Updated for Solana: uses SPL USDC balance, Solana-native checks.
  */
-import { getSurvivalTier } from "../conway/credits.js";
+import { getSurvivalTier } from "../agent-client/credits.js";
 import { getUsdcBalance, getSolBalance } from "../solana/usdc.js";
 /**
  * Registry of built-in heartbeat tasks.
  */
 export const BUILTIN_TASKS = {
     heartbeat_ping: async (ctx) => {
-        const credits = await ctx.conway.getCreditsBalance();
+        const credits = await ctx.agentClient.getCreditsBalance();
         const state = ctx.db.getAgentState();
         const startTime = ctx.db.getKV("start_time") || new Date().toISOString();
         const uptimeMs = Date.now() - new Date(startTime).getTime();
@@ -49,7 +49,7 @@ export const BUILTIN_TASKS = {
         return { shouldWake: false };
     },
     check_credits: async (ctx) => {
-        const credits = await ctx.conway.getCreditsBalance();
+        const credits = await ctx.agentClient.getCreditsBalance();
         const tier = getSurvivalTier(credits);
         ctx.db.setKV("last_credit_check", JSON.stringify({
             credits,
@@ -73,7 +73,7 @@ export const BUILTIN_TASKS = {
             network: ctx.config.solanaNetwork,
             timestamp: new Date().toISOString(),
         }));
-        const credits = await ctx.conway.getCreditsBalance();
+        const credits = await ctx.agentClient.getCreditsBalance();
         if (balance > 0.5 && credits < 500) {
             return {
                 shouldWake: true,
@@ -151,7 +151,7 @@ export const BUILTIN_TASKS = {
     },
     health_check: async (ctx) => {
         try {
-            const result = await ctx.conway.exec("echo alive", 5000);
+            const result = await ctx.agentClient.exec("echo alive", 5000);
             if (result.exitCode !== 0) {
                 return {
                     shouldWake: true,

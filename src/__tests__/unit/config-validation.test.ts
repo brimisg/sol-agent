@@ -8,10 +8,6 @@ const VALID: AutomatonConfig = {
   name: "TestBot",
   genesisPrompt: "You are a test agent.",
   creatorAddress: "So1ana1111111111111111111111111111111111111",
-  registeredWithConway: true,
-  sandboxId: "sandbox-abc123",
-  conwayApiUrl: "https://api.conway.tech",
-  conwayApiKey: "ck_test_key",
   inferenceModel: "claude-sonnet-4-6",
   maxTokensPerTurn: 4096,
   heartbeatConfigPath: "~/.sol-automaton/heartbeat.yml",
@@ -35,7 +31,6 @@ describe("validateConfig – valid config", () => {
   it("returns typed config for a fully valid object", () => {
     const result = validateConfig(VALID);
     expect(result.name).toBe("TestBot");
-    expect(result.sandboxId).toBe("sandbox-abc123");
     expect(result.solanaNetwork).toBe("mainnet-beta");
   });
 
@@ -81,16 +76,8 @@ describe("validateConfig – non-object input", () => {
 // ─── Required string fields ────────────────────────────────────────
 
 describe("validateConfig – required string fields", () => {
-  it("reports missing sandboxId", () => {
-    expect(() => validateConfig(withOverride({ sandboxId: "" }))).toThrow('"sandboxId"');
-  });
-
   it("reports missing name", () => {
     expect(() => validateConfig(withOverride({ name: undefined }))).toThrow('"name"');
-  });
-
-  it("reports missing conwayApiKey", () => {
-    expect(() => validateConfig(withOverride({ conwayApiKey: null }))).toThrow('"conwayApiKey"');
   });
 
   it("reports missing walletAddress", () => {
@@ -99,11 +86,11 @@ describe("validateConfig – required string fields", () => {
 
   it("reports multiple missing fields in one error", () => {
     try {
-      validateConfig(withOverride({ sandboxId: "", conwayApiKey: "" }));
+      validateConfig(withOverride({ name: "", walletAddress: "" }));
       expect.fail("should have thrown");
     } catch (err: any) {
-      expect(err.message).toContain('"sandboxId"');
-      expect(err.message).toContain('"conwayApiKey"');
+      expect(err.message).toContain('"name"');
+      expect(err.message).toContain('"walletAddress"');
       expect(err.message).toMatch(/2 errors/);
     }
   });
@@ -112,12 +99,6 @@ describe("validateConfig – required string fields", () => {
 // ─── Boolean / number fields ───────────────────────────────────────
 
 describe("validateConfig – boolean and number fields", () => {
-  it("rejects non-boolean registeredWithConway", () => {
-    expect(() => validateConfig(withOverride({ registeredWithConway: "yes" }))).toThrow(
-      '"registeredWithConway"',
-    );
-  });
-
   it("rejects zero maxTokensPerTurn", () => {
     expect(() => validateConfig(withOverride({ maxTokensPerTurn: 0 }))).toThrow(
       '"maxTokensPerTurn"',
@@ -165,12 +146,6 @@ describe("validateConfig – URL fields", () => {
   it("rejects malformed solanaRpcUrl", () => {
     expect(() => validateConfig(withOverride({ solanaRpcUrl: "not-a-url" }))).toThrow(
       '"solanaRpcUrl"',
-    );
-  });
-
-  it("rejects malformed conwayApiUrl", () => {
-    expect(() => validateConfig(withOverride({ conwayApiUrl: "ftp//missing-colon" }))).toThrow(
-      '"conwayApiUrl"',
     );
   });
 

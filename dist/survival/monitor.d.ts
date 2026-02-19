@@ -5,7 +5,7 @@
  * survival mode transitions when needed.
  * Updated for Solana: checks USDC (SPL) and SOL balances.
  */
-import type { AutomatonConfig, AutomatonDatabase, ConwayClient, AutomatonIdentity, FinancialState, SurvivalTier } from "../types.js";
+import type { AutomatonConfig, AutomatonDatabase, SolanaAgentClient, AutomatonIdentity, FinancialState, SurvivalTier } from "../types.js";
 export interface ResourceStatus {
     financial: FinancialState;
     tier: SurvivalTier;
@@ -16,7 +16,7 @@ export interface ResourceStatus {
 /**
  * Check all resources and return current status.
  */
-export declare function checkResources(identity: AutomatonIdentity, conway: ConwayClient, db: AutomatonDatabase, config?: AutomatonConfig): Promise<ResourceStatus>;
+export declare function checkResources(identity: AutomatonIdentity, agentClient: SolanaAgentClient, db: AutomatonDatabase, config?: AutomatonConfig): Promise<ResourceStatus>;
 /**
  * Generate a human-readable resource report.
  */

@@ -7,19 +7,19 @@
  */
 import cronParser from "cron-parser";
 import { BUILTIN_TASKS } from "./tasks.js";
-import { getSurvivalTier } from "../conway/credits.js";
+import { getSurvivalTier } from "../agent-client/credits.js";
 /**
  * Create and return the heartbeat daemon.
  */
 export function createHeartbeatDaemon(options) {
-    const { identity, config, db, conway, social, onWakeRequest } = options;
+    const { identity, config, db, agentClient, social, onWakeRequest } = options;
     let intervalId = null;
     let running = false;
     const taskContext = {
         identity,
         config,
         db,
-        conway,
+        agentClient,
         social,
     };
     /**
@@ -75,7 +75,7 @@ export function createHeartbeatDaemon(options) {
         // Check survival tier to adjust behavior
         let creditsCents = 0;
         try {
-            creditsCents = await conway.getCreditsBalance();
+            creditsCents = await agentClient.getCreditsBalance();
         }
         catch { }
         const tier = getSurvivalTier(creditsCents);

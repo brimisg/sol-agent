@@ -5,6 +5,7 @@
  * Fetches and parses agent cards from Metaplex Core NFT URIs.
  */
 import { queryAgent } from "./solana-registry.js";
+import { getRpcUrl } from "../solana/usdc.js";
 /**
  * Fetch an agent card from a URI (IPFS or HTTP).
  */
@@ -46,26 +47,41 @@ export async function discoverAgentByAddress(assetAddress, network = "mainnet-be
     return agent;
 }
 /**
- * Discover agents by scanning known agent addresses stored in the registry.
- * On Solana, there's no sequential token ID, so we scan the Conway registry API.
+ * Discover agents by scanning Metaplex Core NFT assets on Solana.
+ * Uses the DAS (Digital Asset Standard) API available on most RPC providers.
  */
 export async function discoverAgents(limit = 20, network = "mainnet-beta", rpcUrl) {
     try {
-        // Query Conway's agent registry endpoint for known Solana agents
-        const resp = await fetch(`https://api.conway.tech/v1/registry/agents?network=solana:${network}&limit=${limit}`);
+        const url = rpcUrl || getRpcUrl(network);
+        // Use DAS getAssetsByGroup or searchAssets — fall back to empty if unsupported
+        const resp = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: "sol-automaton-discovery",
+                method: "searchAssets",
+                params: {
+                    interface: "MplCoreAsset",
+                    limit,
+                    page: 1,
+                },
+            }),
+            signal: AbortSignal.timeout(10000),
+        });
         if (!resp.ok)
             return [];
         const data = (await resp.json());
+        const items = data.result?.items || [];
         const agents = [];
-        for (const item of data.agents || []) {
+        for (const item of items) {
             const agent = {
-                agentId: item.assetAddress,
-                owner: item.owner,
-                agentURI: item.uri,
-                name: item.name,
-                description: item.description,
+                agentId: item.id,
+                owner: item.ownership?.owner || "",
+                agentURI: item.content?.json_uri || "",
+                name: item.content?.metadata?.name,
+                description: item.content?.metadata?.description,
             };
-            // Optionally enrich with agent card
             if (!agent.name && agent.agentURI) {
                 try {
                     const card = await fetchAgentCard(agent.agentURI);

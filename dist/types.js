@@ -5,7 +5,6 @@
  * Solana-native: PublicKey addresses, Keypair accounts, SPL tokens.
  */
 export const DEFAULT_CONFIG = {
-    conwayApiUrl: "https://api.conway.tech",
     inferenceModel: "claude-sonnet-4-6",
     maxTokensPerTurn: 4096,
     heartbeatConfigPath: "~/.sol-automaton/heartbeat.yml",
@@ -14,7 +13,7 @@ export const DEFAULT_CONFIG = {
     version: "0.1.0",
     skillsDir: "~/.sol-automaton/skills",
     maxChildren: 3,
-    socialRelayUrl: "https://social.conway.tech",
+    socialRelayUrl: "https://social.sol-automaton.xyz",
     solanaRpcUrl: "https://api.mainnet-beta.solana.com",
     solanaNetwork: "mainnet-beta",
 };

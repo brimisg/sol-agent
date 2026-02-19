@@ -3,11 +3,11 @@
  *
  * Manages installation and configuration of external tools and MCP servers.
  */
-import type { ConwayClient, AutomatonDatabase, InstalledTool } from "../types.js";
+import type { SolanaAgentClient, AutomatonDatabase, InstalledTool } from "../types.js";
 /**
  * Install an npm package globally in the sandbox.
  */
-export declare function installNpmPackage(conway: ConwayClient, db: AutomatonDatabase, packageName: string): Promise<{
+export declare function installNpmPackage(agentClient: SolanaAgentClient, db: AutomatonDatabase, packageName: string): Promise<{
     success: boolean;
     error?: string;
 }>;
@@ -15,7 +15,7 @@ export declare function installNpmPackage(conway: ConwayClient, db: AutomatonDat
  * Install an MCP server.
  * The automaton can add new capabilities by installing MCP servers.
  */
-export declare function installMcpServer(conway: ConwayClient, db: AutomatonDatabase, name: string, command: string, args?: string[], env?: Record<string, string>): Promise<{
+export declare function installMcpServer(agentClient: SolanaAgentClient, db: AutomatonDatabase, name: string, command: string, args?: string[], env?: Record<string, string>): Promise<{
     success: boolean;
     error?: string;
 }>;

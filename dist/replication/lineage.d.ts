@@ -6,7 +6,7 @@
  * Children record their parent in config.
  * ERC-8004 registration includes parentAgent field.
  */
-import type { AutomatonDatabase, ChildAutomaton, AutomatonConfig, ConwayClient } from "../types.js";
+import type { AutomatonDatabase, ChildAutomaton, AutomatonConfig, SolanaAgentClient } from "../types.js";
 /**
  * Get the full lineage tree (parent -> children).
  */
@@ -31,5 +31,5 @@ export declare function pruneDeadChildren(db: AutomatonDatabase, keepLast?: numb
 /**
  * Refresh status of all children.
  */
-export declare function refreshChildrenStatus(conway: ConwayClient, db: AutomatonDatabase): Promise<void>;
+export declare function refreshChildrenStatus(agentClient: SolanaAgentClient, db: AutomatonDatabase): Promise<void>;
 //# sourceMappingURL=lineage.d.ts.map

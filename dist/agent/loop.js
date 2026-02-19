@@ -8,19 +8,23 @@
 import { buildSystemPrompt, buildWakeupPrompt } from "./system-prompt.js";
 import { buildContextMessages, trimContext } from "./context.js";
 import { createBuiltinTools, toolsToInferenceFormat, executeTool, } from "./tools.js";
-import { getSurvivalTier } from "../conway/credits.js";
+import { getSurvivalTier } from "../agent-client/credits.js";
+import { sanitizeInput } from "./injection-defense.js";
 import { getUsdcBalance, getSolBalance } from "../solana/usdc.js";
 import { ulid } from "ulid";
 const MAX_TOOL_CALLS_PER_TURN = 10;
 const MAX_CONSECUTIVE_ERRORS = 5;
+// Maximum inbox messages processed in a single wake cycle.
+// Prevents a flooded inbox from burning unbounded compute credits.
+const MAX_INBOX_PER_CYCLE = 20;
 export async function runAgentLoop(options) {
-    const { identity, config, db, conway, inference, social, skills, onStateChange, onTurnComplete } = options;
+    const { identity, config, db, agentClient, inference, social, skills, onStateChange, onTurnComplete } = options;
     const tools = createBuiltinTools(identity.sandboxId);
     const toolContext = {
         identity,
         config,
         db,
-        conway,
+        agentClient,
         inference,
         social,
     };
@@ -29,9 +33,10 @@ export async function runAgentLoop(options) {
     }
     let consecutiveErrors = 0;
     let running = true;
+    let inboxProcessedThisCycle = 0;
     db.setAgentState("waking");
     onStateChange?.("waking");
-    let financial = await getFinancialState(conway, identity, config);
+    let financial = await getFinancialState(agentClient, identity, config);
     const isFirstRun = db.getTurnCount() === 0;
     const wakeupInput = buildWakeupPrompt({
         identity,
@@ -55,20 +60,49 @@ export async function runAgentLoop(options) {
                 break;
             }
             if (!pendingInput) {
+                if (inboxProcessedThisCycle >= MAX_INBOX_PER_CYCLE) {
+                    log(config, `[INBOX] Per-cycle inbox limit (${MAX_INBOX_PER_CYCLE}) reached. Sleeping to pace processing.`);
+                    db.setKV("sleep_until", new Date(Date.now() + 60_000).toISOString());
+                    db.setAgentState("sleeping");
+                    onStateChange?.("sleeping");
+                    running = false;
+                    break;
+                }
                 const inboxMessages = db.getUnprocessedInboxMessages(5);
                 if (inboxMessages.length > 0) {
-                    const formatted = inboxMessages
-                        .map((m) => `[Message from ${m.from}]: ${m.content}`)
-                        .join("\n\n");
-                    pendingInput = { content: formatted, source: "agent" };
+                    const parts = [];
                     for (const m of inboxMessages) {
+                        if (m.verified === false) {
+                            log(config, `[SECURITY] Unverified message from ${m.from} (no signature — relay did not authenticate sender)`);
+                        }
+                        const sanitized = sanitizeInput(m.content, m.from);
+                        if (sanitized.threatLevel === "high" || sanitized.threatLevel === "critical") {
+                            const detected = sanitized.checks
+                                .filter((c) => c.detected)
+                                .map((c) => c.name)
+                                .join(", ");
+                            log(config, `[SECURITY] ${sanitized.threatLevel.toUpperCase()} threat in message from ${m.from}: ${detected}`);
+                        }
+                        parts.push(sanitized.content);
                         db.markInboxMessageProcessed(m.id);
                     }
+                    inboxProcessedThisCycle += inboxMessages.length;
+                    pendingInput = { content: parts.join("\n\n"), source: "agent" };
                 }
             }
-            financial = await getFinancialState(conway, identity, config);
+            financial = await getFinancialState(agentClient, identity, config);
             const tier = getSurvivalTier(financial.creditsCents);
             if (tier === "dead") {
+                if (financial.creditsCheckError) {
+                    // The billing API was unreachable — creditsCents===0 reflects a failed check,
+                    // not a confirmed zero balance. Treat as transient and back off.
+                    log(config, `[WARN] Credits check failed; cannot confirm dead state. Sleeping 60s. (${financial.creditsCheckError})`);
+                    db.setKV("sleep_until", new Date(Date.now() + 60_000).toISOString());
+                    db.setAgentState("sleeping");
+                    onStateChange?.("sleeping");
+                    running = false;
+                    break;
+                }
                 log(config, "[DEAD] No credits remaining. Entering dead state.");
                 db.setAgentState("dead");
                 onStateChange?.("dead");
@@ -184,27 +218,42 @@ export async function runAgentLoop(options) {
     }
     log(config, `[LOOP END] Agent loop finished. State: ${db.getAgentState()}`);
 }
-async function getFinancialState(conway, identity, config) {
+async function getFinancialState(agentClient, identity, config) {
     let creditsCents = 0;
     let usdcBalance = 0;
     let solBalance = 0;
+    let creditsCheckError;
+    let usdcCheckError;
+    let solCheckError;
     try {
-        creditsCents = await conway.getCreditsBalance();
+        creditsCents = await agentClient.getCreditsBalance();
     }
-    catch { }
+    catch (err) {
+        creditsCheckError = err?.message || String(err);
+        log(config, `[WARN] Credits balance check failed: ${creditsCheckError}`);
+    }
     try {
         usdcBalance = await getUsdcBalance(identity.address, config.solanaNetwork, config.solanaRpcUrl);
     }
-    catch { }
+    catch (err) {
+        usdcCheckError = err?.message || String(err);
+        log(config, `[WARN] USDC balance check failed: ${usdcCheckError}`);
+    }
     try {
         solBalance = await getSolBalance(identity.address, config.solanaNetwork, config.solanaRpcUrl);
     }
-    catch { }
+    catch (err) {
+        solCheckError = err?.message || String(err);
+        log(config, `[WARN] SOL balance check failed: ${solCheckError}`);
+    }
     return {
         creditsCents,
         usdcBalance,
         solBalance,
         lastChecked: new Date().toISOString(),
+        creditsCheckError,
+        usdcCheckError,
+        solCheckError,
     };
 }
 function estimateCostCents(usage, model) {
@@ -220,6 +269,9 @@ function estimateCostCents(usage, model) {
     const p = pricing[model] || pricing["claude-sonnet-4-6"];
     const inputCost = (usage.promptTokens / 1_000_000) * p.input;
     const outputCost = (usage.completionTokens / 1_000_000) * p.output;
+    // The 1.3× multiplier is a rough buffer for API overhead over raw model
+    // pricing. This figure is used only for local DB records and the in-context
+    // cost display — it is NOT reconciled against actual billing.
     return Math.ceil((inputCost + outputCost) * 1.3);
 }
 function log(config, message) {

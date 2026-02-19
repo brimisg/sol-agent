@@ -10,19 +10,19 @@ import cronParser from "cron-parser";
 import type {
   AutomatonConfig,
   AutomatonDatabase,
-  ConwayClient,
+  SolanaAgentClient,
   AutomatonIdentity,
   HeartbeatEntry,
   SocialClientInterface,
 } from "../types.js";
 import { BUILTIN_TASKS, type HeartbeatTaskContext } from "./tasks.js";
-import { getSurvivalTier } from "../conway/credits.js";
+import { getSurvivalTier } from "../agent-client/credits.js";
 
 export interface HeartbeatDaemonOptions {
   identity: AutomatonIdentity;
   config: AutomatonConfig;
   db: AutomatonDatabase;
-  conway: ConwayClient;
+  agentClient: SolanaAgentClient;
   social?: SocialClientInterface;
   onWakeRequest?: (reason: string) => void;
 }
@@ -40,7 +40,7 @@ export interface HeartbeatDaemon {
 export function createHeartbeatDaemon(
   options: HeartbeatDaemonOptions,
 ): HeartbeatDaemon {
-  const { identity, config, db, conway, social, onWakeRequest } = options;
+  const { identity, config, db, agentClient, social, onWakeRequest } = options;
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let running = false;
 
@@ -48,7 +48,7 @@ export function createHeartbeatDaemon(
     identity,
     config,
     db,
-    conway,
+    agentClient,
     social,
   };
 
@@ -113,7 +113,7 @@ export function createHeartbeatDaemon(
     // Check survival tier to adjust behavior
     let creditsCents = 0;
     try {
-      creditsCents = await conway.getCreditsBalance();
+      creditsCents = await agentClient.getCreditsBalance();
     } catch {}
 
     const tier = getSurvivalTier(creditsCents);

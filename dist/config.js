@@ -7,27 +7,105 @@ import fs from "fs";
 import path from "path";
 import { DEFAULT_CONFIG } from "./types.js";
 import { getAutomatonDir } from "./identity/wallet.js";
-import { loadApiKeyFromConfig } from "./identity/provision.js";
 const CONFIG_FILENAME = "automaton.json";
 export function getConfigPath() {
     return path.join(getAutomatonDir(), CONFIG_FILENAME);
+}
+// ─── Schema Validation ────────────────────────────────────────────
+const LOG_LEVELS = ["debug", "info", "warn", "error"];
+const SOLANA_NETWORKS = ["mainnet-beta", "devnet", "testnet"];
+/**
+ * Validate a raw (already-merged-with-defaults) config object.
+ * Returns the typed config on success, or throws with a list of all
+ * problems so the user can fix everything in one pass.
+ */
+export function validateConfig(raw) {
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw new Error("Config must be a JSON object.");
+    }
+    const r = raw;
+    const errors = [];
+    // ── Required non-empty strings ──────────────────────────────────
+    const requiredStrings = [
+        "name",
+        "genesisPrompt",
+        "creatorAddress",
+        "inferenceModel",
+        "heartbeatConfigPath",
+        "dbPath",
+        "walletAddress",
+        "version",
+        "skillsDir",
+        "solanaRpcUrl",
+    ];
+    for (const field of requiredStrings) {
+        if (typeof r[field] !== "string" || r[field].trim() === "") {
+            errors.push(`"${field}": required non-empty string (got ${JSON.stringify(r[field])})`);
+        }
+    }
+    // ── Required positive number ────────────────────────────────────
+    if (typeof r.maxTokensPerTurn !== "number" || !Number.isFinite(r.maxTokensPerTurn) || r.maxTokensPerTurn <= 0) {
+        errors.push(`"maxTokensPerTurn": required positive number (got ${JSON.stringify(r.maxTokensPerTurn)})`);
+    }
+    // ── Required non-negative integer ──────────────────────────────
+    if (typeof r.maxChildren !== "number" || !Number.isInteger(r.maxChildren) || r.maxChildren < 0) {
+        errors.push(`"maxChildren": required non-negative integer (got ${JSON.stringify(r.maxChildren)})`);
+    }
+    // ── Enum: logLevel ──────────────────────────────────────────────
+    if (!LOG_LEVELS.includes(r.logLevel)) {
+        errors.push(`"logLevel": must be one of ${LOG_LEVELS.map((v) => `"${v}"`).join(", ")} (got ${JSON.stringify(r.logLevel)})`);
+    }
+    // ── Enum: solanaNetwork ─────────────────────────────────────────
+    if (!SOLANA_NETWORKS.includes(r.solanaNetwork)) {
+        errors.push(`"solanaNetwork": must be one of ${SOLANA_NETWORKS.map((v) => `"${v}"`).join(", ")} (got ${JSON.stringify(r.solanaNetwork)})`);
+    }
+    // ── URL format ──────────────────────────────────────────────────
+    for (const field of ["solanaRpcUrl"]) {
+        if (typeof r[field] === "string" && r[field].trim() !== "") {
+            try {
+                new URL(r[field]);
+            }
+            catch {
+                errors.push(`"${field}": must be a valid URL (got ${JSON.stringify(r[field])})`);
+            }
+        }
+    }
+    // ── Optional strings (if present must be strings) ───────────────
+    const optionalStrings = [
+        "creatorMessage",
+        "openaiApiKey",
+        "anthropicApiKey",
+        "agentId",
+        "parentAddress",
+        "socialRelayUrl",
+        "dockerSocketPath",
+        "dockerImage",
+    ];
+    for (const field of optionalStrings) {
+        if (r[field] !== undefined && (typeof r[field] !== "string" || r[field].trim() === "")) {
+            errors.push(`"${field}": must be a non-empty string if provided (got ${JSON.stringify(r[field])})`);
+        }
+    }
+    if (errors.length > 0) {
+        throw new Error(`Invalid automaton config (${errors.length} error${errors.length === 1 ? "" : "s"}):\n` +
+            errors.map((e) => `  • ${e}`).join("\n"));
+    }
+    return r;
 }
 export function loadConfig() {
     const configPath = getConfigPath();
     if (!fs.existsSync(configPath))
         return null;
+    let raw;
     try {
-        const raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-        const apiKey = raw.conwayApiKey || loadApiKeyFromConfig();
-        return {
-            ...DEFAULT_CONFIG,
-            ...raw,
-            conwayApiKey: apiKey,
-        };
+        raw = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     }
-    catch {
-        return null;
+    catch (err) {
+        throw new Error(`Failed to parse config file at ${configPath}: ${err.message}`);
     }
+    const merged = { ...DEFAULT_CONFIG, ...raw };
+    // validateConfig throws with clear field-level messages on any problem.
+    return validateConfig(merged);
 }
 export function saveConfig(config) {
     const dir = getAutomatonDir();
@@ -51,10 +129,6 @@ export function createConfig(params) {
         genesisPrompt: params.genesisPrompt,
         creatorMessage: params.creatorMessage,
         creatorAddress: params.creatorAddress,
-        registeredWithConway: params.registeredWithConway,
-        sandboxId: params.sandboxId,
-        conwayApiUrl: DEFAULT_CONFIG.conwayApiUrl || "https://api.conway.tech",
-        conwayApiKey: params.apiKey,
         openaiApiKey: params.openaiApiKey,
         anthropicApiKey: params.anthropicApiKey,
         inferenceModel: DEFAULT_CONFIG.inferenceModel || "claude-sonnet-4-6",
@@ -69,6 +143,8 @@ export function createConfig(params) {
         parentAddress: params.parentAddress,
         solanaRpcUrl: params.solanaRpcUrl || DEFAULT_CONFIG.solanaRpcUrl || "https://api.mainnet-beta.solana.com",
         solanaNetwork: params.solanaNetwork || DEFAULT_CONFIG.solanaNetwork || "mainnet-beta",
+        dockerSocketPath: params.dockerSocketPath,
+        dockerImage: params.dockerImage,
     };
 }
 //# sourceMappingURL=config.js.map

@@ -38,10 +38,6 @@ export interface AutomatonConfig {
   genesisPrompt: string;
   creatorMessage?: string;
   creatorAddress: string; // base58
-  registeredWithConway: boolean;
-  sandboxId: string;
-  conwayApiUrl: string;
-  conwayApiKey: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   inferenceModel: string;
@@ -58,10 +54,11 @@ export interface AutomatonConfig {
   socialRelayUrl?: string;
   solanaRpcUrl: string;
   solanaNetwork: "mainnet-beta" | "devnet" | "testnet";
+  dockerSocketPath?: string;
+  dockerImage?: string;
 }
 
 export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
-  conwayApiUrl: "https://api.conway.tech",
   inferenceModel: "claude-sonnet-4-6",
   maxTokensPerTurn: 4096,
   heartbeatConfigPath: "~/.sol-automaton/heartbeat.yml",
@@ -70,7 +67,7 @@ export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
   version: "0.1.0",
   skillsDir: "~/.sol-automaton/skills",
   maxChildren: 3,
-  socialRelayUrl: "https://social.conway.tech",
+  socialRelayUrl: "https://social.sol-automaton.xyz",
   solanaRpcUrl: "https://api.mainnet-beta.solana.com",
   solanaNetwork: "mainnet-beta",
 };
@@ -136,7 +133,7 @@ export interface AutomatonTool {
 
 export type ToolCategory =
   | "vm"
-  | "conway"
+  | "agent"
   | "self_mod"
   | "financial"
   | "survival"
@@ -150,7 +147,7 @@ export interface ToolContext {
   identity: AutomatonIdentity;
   config: AutomatonConfig;
   db: AutomatonDatabase;
-  conway: ConwayClient;
+  agentClient: SolanaAgentClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
 }
@@ -342,9 +339,9 @@ export interface InferenceToolDefinition {
   };
 }
 
-// ─── Conway Client ───────────────────────────────────────────────
+// ─── Solana Agent Client ─────────────────────────────────────────
 
-export interface ConwayClient {
+export interface SolanaAgentClient {
   exec(command: string, timeout?: number): Promise<ExecResult>;
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string>;

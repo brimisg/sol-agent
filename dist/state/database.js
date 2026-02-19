@@ -147,13 +147,25 @@ export function createDatabase(dbPath) {
        VALUES (?, ?, ?, ?, ?, ?)`).run(entry.id, entry.fromAgent, entry.toAgent, entry.score, entry.comment, entry.txSignature ?? null);
     };
     const getReputation = (agentAddress) => {
-        const query = agentAddress
-            ? "SELECT * FROM reputation WHERE to_agent = ? ORDER BY created_at DESC"
-            : "SELECT * FROM reputation ORDER BY created_at DESC";
-        const params = agentAddress ? [agentAddress] : [];
-        return db.prepare(query).all(...params).map(deserializeReputation);
+        if (agentAddress) {
+            return db.prepare("SELECT * FROM reputation WHERE to_agent = ? ORDER BY created_at DESC")
+                .all(agentAddress).map(deserializeReputation);
+        }
+        return db.prepare("SELECT * FROM reputation ORDER BY created_at DESC").all().map(deserializeReputation);
     };
+    // Maximum unprocessed messages allowed from a single sender.
+    const INBOX_PER_SENDER_LIMIT = 10;
+    // Maximum total unprocessed messages in the queue at any time.
+    const INBOX_GLOBAL_LIMIT = 100;
     const insertInboxMessage = (msg) => {
+        // Global queue cap — prevents unbounded memory / compute growth.
+        const globalCount = db.prepare("SELECT COUNT(*) as cnt FROM inbox_messages WHERE processed_at IS NULL").get().cnt;
+        if (globalCount >= INBOX_GLOBAL_LIMIT)
+            return;
+        // Per-sender cap — prevents a single sender from monopolising the queue.
+        const senderCount = db.prepare("SELECT COUNT(*) as cnt FROM inbox_messages WHERE from_address = ? AND processed_at IS NULL").get(msg.from).cnt;
+        if (senderCount >= INBOX_PER_SENDER_LIMIT)
+            return;
         db.prepare(`INSERT OR IGNORE INTO inbox_messages (id, from_address, content, received_at, reply_to)
        VALUES (?, ?, ?, ?, ?)`).run(msg.id, msg.from, msg.content, msg.createdAt || new Date().toISOString(), msg.replyTo ?? null);
     };

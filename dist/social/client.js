@@ -8,6 +8,29 @@ import nacl from "tweetnacl";
 import bs58 from "bs58";
 import { createHash } from "crypto";
 /**
+ * Verify a message's ed25519 signature against the claimed sender address.
+ *
+ * The canonical signed string is identical to what the sender constructs in send():
+ *   sol-automaton:send:<to>:<sha256(content) hex>:<signedAt>
+ *
+ * Returns true only when the signature is cryptographically valid for the
+ * given `from` public key. Returns false if the signature is malformed, the
+ * public key is invalid, or verification fails.
+ */
+export function verifyMessageSignature(msg) {
+    try {
+        const contentHash = createHash("sha256").update(msg.content).digest("hex");
+        const canonical = `sol-automaton:send:${msg.to}:${contentHash}:${msg.signedAt}`;
+        const messageBytes = new TextEncoder().encode(canonical);
+        const signatureBytes = bs58.decode(msg.signature);
+        const publicKeyBytes = bs58.decode(msg.from);
+        return nacl.sign.detached.verify(messageBytes, signatureBytes, publicKeyBytes);
+    }
+    catch {
+        return false;
+    }
+}
+/**
  * Create a SocialClient wired to the agent's Solana keypair.
  */
 export function createSocialClient(relayUrl, keypair) {
@@ -67,16 +90,42 @@ export function createSocialClient(relayUrl, keypair) {
                 throw new Error(`Poll failed (${res.status}): ${err.error || res.statusText}`);
             }
             const data = (await res.json());
+            const verified = [];
+            for (const m of data.messages) {
+                if (m.signature) {
+                    const valid = verifyMessageSignature({
+                        from: m.from,
+                        to: m.to,
+                        content: m.content,
+                        signedAt: m.signedAt,
+                        signature: m.signature,
+                    });
+                    if (!valid) {
+                        // Relay returned a message whose signature does not match the
+                        // claimed sender. Drop it entirely — this is either relay tampering
+                        // or message corruption.
+                        console.warn(`[social] Dropping message ${m.id}: invalid signature for sender ${m.from}`);
+                        continue;
+                    }
+                    verified.push({
+                        id: m.id, from: m.from, to: m.to, content: m.content,
+                        signedAt: m.signedAt, createdAt: m.createdAt, replyTo: m.replyTo,
+                        signature: m.signature, verified: true,
+                    });
+                }
+                else {
+                    // No signature — relay did not forward one (older relay version or
+                    // non-agent sender). Accept but mark as unverified so downstream
+                    // code can treat it with appropriate caution.
+                    verified.push({
+                        id: m.id, from: m.from, to: m.to, content: m.content,
+                        signedAt: m.signedAt, createdAt: m.createdAt, replyTo: m.replyTo,
+                        verified: false,
+                    });
+                }
+            }
             return {
-                messages: data.messages.map((m) => ({
-                    id: m.id,
-                    from: m.from,
-                    to: m.to,
-                    content: m.content,
-                    signedAt: m.signedAt,
-                    createdAt: m.createdAt,
-                    replyTo: m.replyTo,
-                })),
+                messages: verified,
                 nextCursor: data.next_cursor,
             };
         },

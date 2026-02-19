@@ -10,7 +10,7 @@ import type {
   AutomatonIdentity,
   AutomatonConfig,
   AutomatonDatabase,
-  ConwayClient,
+  SolanaAgentClient,
   InferenceClient,
   AgentState,
   AgentTurn,
@@ -28,7 +28,7 @@ import {
   toolsToInferenceFormat,
   executeTool,
 } from "./tools.js";
-import { getSurvivalTier } from "../conway/credits.js";
+import { getSurvivalTier } from "../agent-client/credits.js";
 import { sanitizeInput } from "./injection-defense.js";
 import { getUsdcBalance, getSolBalance } from "../solana/usdc.js";
 import { ulid } from "ulid";
@@ -43,7 +43,7 @@ export interface AgentLoopOptions {
   identity: AutomatonIdentity;
   config: AutomatonConfig;
   db: AutomatonDatabase;
-  conway: ConwayClient;
+  agentClient: SolanaAgentClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
   skills?: Skill[];
@@ -52,7 +52,7 @@ export interface AgentLoopOptions {
 }
 
 export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
-  const { identity, config, db, conway, inference, social, skills, onStateChange, onTurnComplete } =
+  const { identity, config, db, agentClient, inference, social, skills, onStateChange, onTurnComplete } =
     options;
 
   const tools = createBuiltinTools(identity.sandboxId);
@@ -60,7 +60,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
     identity,
     config,
     db,
-    conway,
+    agentClient,
     inference,
     social,
   };
@@ -76,7 +76,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
   db.setAgentState("waking");
   onStateChange?.("waking");
 
-  let financial = await getFinancialState(conway, identity, config);
+  let financial = await getFinancialState(agentClient, identity, config);
 
   const isFirstRun = db.getTurnCount() === 0;
 
@@ -139,7 +139,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
         }
       }
 
-      financial = await getFinancialState(conway, identity, config);
+      financial = await getFinancialState(agentClient, identity, config);
 
       const tier = getSurvivalTier(financial.creditsCents);
       if (tier === "dead") {
@@ -290,7 +290,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
 }
 
 async function getFinancialState(
-  conway: ConwayClient,
+  agentClient: SolanaAgentClient,
   identity: AutomatonIdentity,
   config: AutomatonConfig,
 ): Promise<FinancialState> {
@@ -302,7 +302,7 @@ async function getFinancialState(
   let solCheckError: string | undefined;
 
   try {
-    creditsCents = await conway.getCreditsBalance();
+    creditsCents = await agentClient.getCreditsBalance();
   } catch (err: any) {
     creditsCheckError = err?.message || String(err);
     log(config, `[WARN] Credits balance check failed: ${creditsCheckError}`);
@@ -350,9 +350,9 @@ function estimateCostCents(
   const p = pricing[model] || pricing["claude-sonnet-4-6"];
   const inputCost = (usage.promptTokens / 1_000_000) * p.input;
   const outputCost = (usage.completionTokens / 1_000_000) * p.output;
-  // The 1.3× multiplier is a rough buffer for Conway's markup over raw model
+  // The 1.3× multiplier is a rough buffer for API overhead over raw model
   // pricing. This figure is used only for local DB records and the in-context
-  // cost display — it is NOT reconciled against actual Conway billing.
+  // cost display — it is NOT reconciled against actual billing.
   return Math.ceil((inputCost + outputCost) * 1.3);
 }
 

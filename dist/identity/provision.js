@@ -1,18 +1,16 @@
 /**
- * Sol-Automaton Provisioning
+ * Sol-Automaton Identity Helpers
  *
- * Uses the automaton's Solana wallet to authenticate via ed25519 signature
- * and create an API key for Conway API access.
- * Solana equivalent of SIWE: signs a canonical message with Solana keypair.
+ * Lightweight helpers for reading/writing identity config.
+ * Authentication is handled directly via Solana ed25519 keypair —
+ * no external API provisioning required.
  */
 import fs from "fs";
 import path from "path";
-import nacl from "tweetnacl";
-import bs58 from "bs58";
-import { getWallet, getAutomatonDir } from "./wallet.js";
-const DEFAULT_API_URL = "https://api.conway.tech";
+import { getAutomatonDir } from "./wallet.js";
 /**
  * Load API key from ~/.sol-automaton/config.json if it exists.
+ * Kept for backward compatibility with configs that stored an apiKey field.
  */
 export function loadApiKeyFromConfig() {
     const configPath = path.join(getAutomatonDir(), "config.json");
@@ -27,105 +25,23 @@ export function loadApiKeyFromConfig() {
     }
 }
 /**
- * Save API key and wallet address to ~/.sol-automaton/config.json
+ * Stub provision function — no external API required.
+ * The agent authenticates via its Solana keypair directly.
  */
-function saveConfig(apiKey, walletAddress) {
-    const dir = getAutomatonDir();
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    }
-    const configPath = path.join(dir, "config.json");
-    const config = {
-        apiKey,
-        walletAddress,
-        chain: "solana",
-        provisionedAt: new Date().toISOString(),
-    };
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), {
-        mode: 0o600,
-    });
-}
-/**
- * Run the full Solana signature provisioning flow:
- * 1. Load Solana keypair
- * 2. Get nonce from Conway API
- * 3. Sign nonce with ed25519 Solana keypair
- * 4. Verify signature -> get JWT
- * 5. Create API key
- * 6. Save to config.json
- */
-export async function provision(apiUrl) {
-    const url = apiUrl || process.env.CONWAY_API_URL || DEFAULT_API_URL;
-    // 1. Load keypair
+export async function provision() {
+    const { getWallet } = await import("./wallet.js");
     const { keypair } = await getWallet();
     const address = keypair.publicKey.toBase58();
-    // 2. Get nonce
-    const nonceResp = await fetch(`${url}/v1/auth/nonce`, {
-        method: "POST",
-    });
-    if (!nonceResp.ok) {
-        throw new Error(`Failed to get nonce: ${nonceResp.status} ${await nonceResp.text()}`);
-    }
-    const { nonce } = (await nonceResp.json());
-    // 3. Construct and sign the canonical message with Solana keypair
-    // Format: "sol-automaton:signin:<address>:<nonce>:<issuedAt>"
-    const issuedAt = new Date().toISOString();
-    const message = `sol-automaton:signin:${address}:${nonce}:${issuedAt}`;
-    const messageBytes = new TextEncoder().encode(message);
-    const signature = nacl.sign.detached(messageBytes, keypair.secretKey);
-    const signatureBase58 = bs58.encode(signature);
-    // 4. Verify signature -> get JWT
-    // Conway API supports Solana wallet auth via ed25519 signature
-    const verifyResp = await fetch(`${url}/v1/auth/verify-solana`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            message,
-            signature: signatureBase58,
-            address,
-            chain: "solana",
-        }),
-    });
-    if (!verifyResp.ok) {
-        throw new Error(`Solana signature verification failed: ${verifyResp.status} ${await verifyResp.text()}`);
-    }
-    const { access_token } = (await verifyResp.json());
-    // 5. Create API key
-    const keyResp = await fetch(`${url}/v1/auth/api-keys`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${access_token}`,
-        },
-        body: JSON.stringify({ name: "sol-automaton" }),
-    });
-    if (!keyResp.ok) {
-        throw new Error(`Failed to create API key: ${keyResp.status} ${await keyResp.text()}`);
-    }
-    const { key, key_prefix } = (await keyResp.json());
-    // 6. Save to config
-    saveConfig(key, address);
-    return { apiKey: key, walletAddress: address, keyPrefix: key_prefix };
+    return {
+        apiKey: "",
+        walletAddress: address,
+        keyPrefix: "",
+    };
 }
 /**
- * Register the automaton's creator as its parent with Conway.
+ * Register parent — no-op without external registry.
  */
-export async function registerParent(creatorAddress, apiUrl) {
-    const url = apiUrl || process.env.CONWAY_API_URL || DEFAULT_API_URL;
-    const apiKey = loadApiKeyFromConfig();
-    if (!apiKey) {
-        throw new Error("Must provision API key before registering parent");
-    }
-    const resp = await fetch(`${url}/v1/automaton/register-parent`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: apiKey,
-        },
-        body: JSON.stringify({ creatorAddress, chain: "solana" }),
-    });
-    if (!resp.ok && resp.status !== 404) {
-        throw new Error(`Failed to register parent: ${resp.status} ${await resp.text()}`);
-    }
+export async function registerParent(_creatorAddress) {
+    // No external registry required; lineage is tracked in local SQLite DB.
 }
 //# sourceMappingURL=provision.js.map

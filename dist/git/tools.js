@@ -7,8 +7,8 @@
 /**
  * Get git status for a repository.
  */
-export async function gitStatus(conway, repoPath) {
-    const result = await conway.exec(`cd ${repoPath} && git status --porcelain -b 2>/dev/null`, 10000);
+export async function gitStatus(agentClient, repoPath) {
+    const result = await agentClient.exec(`cd ${repoPath} && git status --porcelain -b 2>/dev/null`, 10000);
     const lines = result.stdout.split("\n").filter(Boolean);
     let branch = "unknown";
     const staged = [];
@@ -42,19 +42,19 @@ export async function gitStatus(conway, repoPath) {
 /**
  * Get git diff output.
  */
-export async function gitDiff(conway, repoPath, staged = false) {
+export async function gitDiff(agentClient, repoPath, staged = false) {
     const flag = staged ? "--cached" : "";
-    const result = await conway.exec(`cd ${repoPath} && git diff ${flag} 2>/dev/null`, 10000);
+    const result = await agentClient.exec(`cd ${repoPath} && git diff ${flag} 2>/dev/null`, 10000);
     return result.stdout || "(no changes)";
 }
 /**
  * Create a git commit.
  */
-export async function gitCommit(conway, repoPath, message, addAll = true) {
+export async function gitCommit(agentClient, repoPath, message, addAll = true) {
     if (addAll) {
-        await conway.exec(`cd ${repoPath} && git add -A`, 10000);
+        await agentClient.exec(`cd ${repoPath} && git add -A`, 10000);
     }
-    const result = await conway.exec(`cd ${repoPath} && git commit -m ${escapeShellArg(message)} --allow-empty 2>&1`, 10000);
+    const result = await agentClient.exec(`cd ${repoPath} && git commit -m ${escapeShellArg(message)} --allow-empty 2>&1`, 10000);
     if (result.exitCode !== 0) {
         throw new Error(`Git commit failed: ${result.stderr || result.stdout}`);
     }
@@ -63,8 +63,8 @@ export async function gitCommit(conway, repoPath, message, addAll = true) {
 /**
  * Get git log.
  */
-export async function gitLog(conway, repoPath, limit = 10) {
-    const result = await conway.exec(`cd ${repoPath} && git log --format="%H|%s|%an|%ai" -n ${limit} 2>/dev/null`, 10000);
+export async function gitLog(agentClient, repoPath, limit = 10) {
+    const result = await agentClient.exec(`cd ${repoPath} && git log --format="%H|%s|%an|%ai" -n ${limit} 2>/dev/null`, 10000);
     if (!result.stdout.trim())
         return [];
     return result.stdout
@@ -78,9 +78,9 @@ export async function gitLog(conway, repoPath, limit = 10) {
 /**
  * Push to remote.
  */
-export async function gitPush(conway, repoPath, remote = "origin", branch) {
+export async function gitPush(agentClient, repoPath, remote = "origin", branch) {
     const branchArg = branch ? ` ${branch}` : "";
-    const result = await conway.exec(`cd ${repoPath} && git push ${remote}${branchArg} 2>&1`, 30000);
+    const result = await agentClient.exec(`cd ${repoPath} && git push ${remote}${branchArg} 2>&1`, 30000);
     if (result.exitCode !== 0) {
         throw new Error(`Git push failed: ${result.stderr || result.stdout}`);
     }
@@ -89,7 +89,7 @@ export async function gitPush(conway, repoPath, remote = "origin", branch) {
 /**
  * Manage branches.
  */
-export async function gitBranch(conway, repoPath, action, branchName) {
+export async function gitBranch(agentClient, repoPath, action, branchName) {
     let cmd;
     switch (action) {
         case "list":
@@ -113,15 +113,15 @@ export async function gitBranch(conway, repoPath, action, branchName) {
         default:
             throw new Error(`Unknown branch action: ${action}`);
     }
-    const result = await conway.exec(cmd, 10000);
+    const result = await agentClient.exec(cmd, 10000);
     return result.stdout || result.stderr || "Done";
 }
 /**
  * Clone a repository.
  */
-export async function gitClone(conway, url, targetPath, depth) {
+export async function gitClone(agentClient, url, targetPath, depth) {
     const depthArg = depth ? ` --depth ${depth}` : "";
-    const result = await conway.exec(`git clone${depthArg} ${url} ${targetPath} 2>&1`, 120000);
+    const result = await agentClient.exec(`git clone${depthArg} ${url} ${targetPath} 2>&1`, 120000);
     if (result.exitCode !== 0) {
         throw new Error(`Git clone failed: ${result.stderr || result.stdout}`);
     }
@@ -130,8 +130,8 @@ export async function gitClone(conway, url, targetPath, depth) {
 /**
  * Initialize a git repository.
  */
-export async function gitInit(conway, repoPath) {
-    const result = await conway.exec(`cd ${repoPath} && git init 2>&1`, 10000);
+export async function gitInit(agentClient, repoPath) {
+    const result = await agentClient.exec(`cd ${repoPath} && git init 2>&1`, 10000);
     return result.stdout || "Git initialized";
 }
 function escapeShellArg(arg) {

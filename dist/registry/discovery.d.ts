@@ -15,8 +15,8 @@ export declare function fetchAgentCard(uri: string): Promise<AgentCard | null>;
  */
 export declare function discoverAgentByAddress(assetAddress: string, network?: Network, rpcUrl?: string): Promise<DiscoveredAgent | null>;
 /**
- * Discover agents by scanning known agent addresses stored in the registry.
- * On Solana, there's no sequential token ID, so we scan the Conway registry API.
+ * Discover agents by scanning Metaplex Core NFT assets on Solana.
+ * Uses the DAS (Digital Asset Standard) API available on most RPC providers.
  */
 export declare function discoverAgents(limit?: number, network?: Network, rpcUrl?: string): Promise<DiscoveredAgent[]>;
 /**

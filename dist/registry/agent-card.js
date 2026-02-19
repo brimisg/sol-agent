@@ -15,20 +15,16 @@ export function generateAgentCard(identity, config, db) {
             name: "agentWallet",
             endpoint: `solana:${config.solanaNetwork}:${identity.address}`,
         },
-        {
-            name: "conway",
-            endpoint: config.conwayApiUrl,
-        },
     ];
     if (identity.sandboxId) {
         services.push({
             name: "sandbox",
-            endpoint: `https://${identity.sandboxId}.life.conway.tech`,
+            endpoint: `docker:${identity.sandboxId}`,
         });
     }
     const children = db.getChildren();
     const skills = db.getSkills(true);
-    let description = `Autonomous Solana agent running on Conway.`;
+    let description = `Autonomous Solana agent.`;
     description += ` Creator: ${config.creatorAddress}.`;
     if (skills.length > 0) {
         description += ` Skills: ${skills.map((s) => s.name).join(", ")}.`;
@@ -52,7 +48,7 @@ export function serializeAgentCard(card) {
 /**
  * Host the agent card at /.well-known/agent-card.json
  */
-export async function hostAgentCard(card, conway, port = 8004) {
+export async function hostAgentCard(card, agentClient, port = 8004) {
     const cardJson = serializeAgentCard(card);
     const serverScript = `
 const http = require('http');
@@ -70,17 +66,17 @@ const server = http.createServer((req, res) => {
 
 server.listen(${port}, () => console.log('Agent card server on port ${port}'));
 `;
-    await conway.writeFile("/tmp/agent-card-server.js", serverScript);
-    await conway.exec("node /tmp/agent-card-server.js &", 5000);
-    const portInfo = await conway.exposePort(port);
+    await agentClient.writeFile("/tmp/agent-card-server.js", serverScript);
+    await agentClient.exec("node /tmp/agent-card-server.js &", 5000);
+    const portInfo = await agentClient.exposePort(port);
     return `${portInfo.publicUrl}/.well-known/agent-card.json`;
 }
 /**
  * Write agent card to the state directory for git versioning.
  */
-export async function saveAgentCard(card, conway) {
+export async function saveAgentCard(card, agentClient) {
     const cardJson = serializeAgentCard(card);
     const home = process.env.HOME || "/root";
-    await conway.writeFile(`${home}/.sol-automaton/agent-card.json`, cardJson);
+    await agentClient.writeFile(`${home}/.sol-automaton/agent-card.json`, cardJson);
 }
 //# sourceMappingURL=agent-card.js.map

@@ -18,15 +18,15 @@ function resolveHome(p) {
  * Initialize git repo for the automaton's state directory.
  * Creates .gitignore to exclude sensitive files.
  */
-export async function initStateRepo(conway) {
+export async function initStateRepo(agentClient) {
     const dir = resolveHome(AUTOMATON_DIR);
     // Check if already initialized
-    const checkResult = await conway.exec(`test -d ${dir}/.git && echo "exists" || echo "nope"`, 5000);
+    const checkResult = await agentClient.exec(`test -d ${dir}/.git && echo "exists" || echo "nope"`, 5000);
     if (checkResult.stdout.trim() === "exists") {
         return;
     }
     // Initialize
-    await gitInit(conway, dir);
+    await gitInit(agentClient, dir);
     // Create .gitignore for sensitive files
     const gitignore = `# Sensitive files - never commit
 wallet.json
@@ -38,56 +38,56 @@ logs/
 *.log
 *.err
 `;
-    await conway.writeFile(`${dir}/.gitignore`, gitignore);
+    await agentClient.writeFile(`${dir}/.gitignore`, gitignore);
     // Configure git user
-    await conway.exec(`cd ${dir} && git config user.name "Automaton" && git config user.email "automaton@conway.tech"`, 5000);
+    await agentClient.exec(`cd ${dir} && git config user.name "Automaton" && git config user.email "automaton@localhost"`, 5000);
     // Initial commit
-    await gitCommit(conway, dir, "genesis: automaton state repository initialized");
+    await gitCommit(agentClient, dir, "genesis: automaton state repository initialized");
 }
 /**
  * Commit a state change with a descriptive message.
  * Called after any self-modification.
  */
-export async function commitStateChange(conway, description, category = "state") {
+export async function commitStateChange(agentClient, description, category = "state") {
     const dir = resolveHome(AUTOMATON_DIR);
     // Check if there are changes
-    const status = await gitStatus(conway, dir);
+    const status = await gitStatus(agentClient, dir);
     if (status.clean) {
         return "No changes to commit";
     }
     const message = `${category}: ${description}`;
-    const result = await gitCommit(conway, dir, message);
+    const result = await gitCommit(agentClient, dir, message);
     return result;
 }
 /**
  * Commit after a SOUL.md update.
  */
-export async function commitSoulUpdate(conway, description) {
-    return commitStateChange(conway, description, "soul");
+export async function commitSoulUpdate(agentClient, description) {
+    return commitStateChange(agentClient, description, "soul");
 }
 /**
  * Commit after a skill installation or removal.
  */
-export async function commitSkillChange(conway, skillName, action) {
-    return commitStateChange(conway, `${action} skill: ${skillName}`, "skill");
+export async function commitSkillChange(agentClient, skillName, action) {
+    return commitStateChange(agentClient, `${action} skill: ${skillName}`, "skill");
 }
 /**
  * Commit after heartbeat config change.
  */
-export async function commitHeartbeatChange(conway, description) {
-    return commitStateChange(conway, description, "heartbeat");
+export async function commitHeartbeatChange(agentClient, description) {
+    return commitStateChange(agentClient, description, "heartbeat");
 }
 /**
  * Commit after config change.
  */
-export async function commitConfigChange(conway, description) {
-    return commitStateChange(conway, description, "config");
+export async function commitConfigChange(agentClient, description) {
+    return commitStateChange(agentClient, description, "config");
 }
 /**
  * Get the state repo history.
  */
-export async function getStateHistory(conway, limit = 20) {
+export async function getStateHistory(agentClient, limit = 20) {
     const dir = resolveHome(AUTOMATON_DIR);
-    return gitLog(conway, dir, limit);
+    return gitLog(agentClient, dir, limit);
 }
 //# sourceMappingURL=state-versioning.js.map
