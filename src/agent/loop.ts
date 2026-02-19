@@ -70,6 +70,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
     db.setKV("start_time", new Date().toISOString());
   }
 
+  // Load model pricing once at startup; refreshed on each outer loop iteration.
+  let modelPricing = await loadModelPricing(agentClient);
+
   let consecutiveErrors = 0;
   let running = true;
   let inboxProcessedThisCycle = 0;
@@ -141,6 +144,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
       }
 
       financial = await getFinancialState(agentClient, identity, config);
+      modelPricing = await loadModelPricing(agentClient);
 
       const tier = getSurvivalTier(financial.creditsCents);
       if (tier === "dead") {
@@ -209,7 +213,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
         thinking: response.message.content || "",
         toolCalls: [],
         tokenUsage: response.usage,
-        costCents: estimateCostCents(response.usage, inference.getDefaultModel()),
+        costCents: estimateCostCents(response.usage, inference.getDefaultModel(), modelPricing),
       };
 
       if (response.toolCalls && response.toolCalls.length > 0) {
@@ -349,21 +353,49 @@ async function getFinancialState(
   };
 }
 
+// Cents per million tokens — used as fallback when listModels() is unavailable.
+// Values here are intentionally conservative (slightly high) so cost estimates
+// never undercount. Update this table only if listModels() cannot be reached.
+const FALLBACK_PRICING: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-6": { input: 300, output: 1500 },
+  "claude-opus-4-6": { input: 1500, output: 7500 },
+  "claude-haiku-4-5-20251001": { input: 80, output: 400 },
+  "gpt-4o": { input: 250, output: 1000 },
+  "gpt-4o-mini": { input: 15, output: 60 },
+  "gpt-4.1": { input: 200, output: 800 },
+  "gpt-4.1-mini": { input: 40, output: 160 },
+};
+
+/**
+ * Fetch live pricing from agentClient.listModels() and convert to cents/M.
+ * Falls back to FALLBACK_PRICING on any error so the loop is never blocked.
+ */
+async function loadModelPricing(
+  agentClient: SolanaAgentClient,
+): Promise<Record<string, { input: number; output: number }>> {
+  try {
+    const models = await agentClient.listModels();
+    const live: Record<string, { input: number; output: number }> = {};
+    for (const m of models) {
+      // listModels() returns $/M — convert to cents/M
+      live[m.id] = {
+        input: m.pricing.inputPerMillion * 100,
+        output: m.pricing.outputPerMillion * 100,
+      };
+    }
+    // Merge: live pricing wins, fallback fills gaps for unlisted models
+    return { ...FALLBACK_PRICING, ...live };
+  } catch {
+    return FALLBACK_PRICING;
+  }
+}
+
 function estimateCostCents(
   usage: { promptTokens: number; completionTokens: number },
   model: string,
+  pricing: Record<string, { input: number; output: number }>,
 ): number {
-  const pricing: Record<string, { input: number; output: number }> = {
-    "claude-sonnet-4-6": { input: 300, output: 1500 },
-    "claude-opus-4-6": { input: 1500, output: 7500 },
-    "claude-haiku-4-5": { input: 80, output: 400 },
-    "gpt-4o": { input: 250, output: 1000 },
-    "gpt-4o-mini": { input: 15, output: 60 },
-    "gpt-4.1": { input: 200, output: 800 },
-    "gpt-4.1-mini": { input: 40, output: 160 },
-  };
-
-  const p = pricing[model] || pricing["claude-sonnet-4-6"];
+  const p = pricing[model] ?? pricing["claude-sonnet-4-6"] ?? { input: 300, output: 1500 };
   const inputCost = (usage.promptTokens / 1_000_000) * p.input;
   const outputCost = (usage.completionTokens / 1_000_000) * p.output;
   // The 1.3× multiplier is a rough buffer for API overhead over raw model
