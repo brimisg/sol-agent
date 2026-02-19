@@ -34,6 +34,33 @@ import type {
 const execAsync = promisify(cpExec);
 const DOCKER_LABEL = "sol-agent-child=true";
 
+/**
+ * Verify that the Docker daemon is reachable before the agent starts.
+ * Throws with a clear message if Docker is unavailable.
+ */
+export async function validateDockerConnection(options?: {
+  dockerSocketPath?: string;
+}): Promise<void> {
+  const sock = options?.dockerSocketPath || process.env.DOCKER_HOST;
+  const hostFlag = sock ? `-H unix://${sock}` : "";
+  const cmd = `docker ${hostFlag} info --format "{{.ServerVersion}}"`.trim();
+  try {
+    const { stdout } = await execAsync(cmd, { timeout: 10_000 });
+    if (!stdout.trim()) {
+      throw new Error("docker info returned empty output");
+    }
+  } catch (err: any) {
+    const hint = sock
+      ? `socket path: ${sock}`
+      : "default socket: /var/run/docker.sock";
+    throw new Error(
+      `Docker daemon is not reachable (${hint}). ` +
+        `Ensure Docker is running and the socket is accessible.\n` +
+        `Underlying error: ${err.message}`,
+    );
+  }
+}
+
 export function createSolanaAgentClient(options: {
   walletAddress: string;
   solanaNetwork: string;

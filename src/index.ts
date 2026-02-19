@@ -15,7 +15,7 @@ import os from "os";
 import { getWallet, getAgentDir } from "./identity/wallet.js";
 import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
-import { createSolanaAgentClient } from "./agent-client/docker.js";
+import { createSolanaAgentClient, validateDockerConnection } from "./agent-client/docker.js";
 import { createInferenceClient } from "./agent-client/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
@@ -195,6 +195,15 @@ async function run(): Promise<void> {
   db.setIdentity("address", address);
   db.setIdentity("creator", config.creatorAddress);
   db.setIdentity("sandbox", sandboxId);
+
+  // Validate Docker daemon is reachable before proceeding
+  try {
+    await validateDockerConnection({ dockerSocketPath: config.dockerSocketPath });
+    console.log(`[${new Date().toISOString()}] Docker daemon: connected.`);
+  } catch (err: any) {
+    console.error(`[${new Date().toISOString()}] ${err.message}`);
+    process.exit(1);
+  }
 
   // Create Docker-backed agent client
   const agentClient: SolanaAgentClient = createSolanaAgentClient({
