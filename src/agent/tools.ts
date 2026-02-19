@@ -697,11 +697,16 @@ Model: ${ctx.inference.getDefaultModel()}
         if (amount > balance / 2) {
           return `Blocked: Cannot transfer more than half your balance ($${(balance / 100).toFixed(2)}). Self-preservation.`;
         }
-        const transfer = await ctx.agentClient.transferCredits(
-          args.to_address as string,
-          amount,
-          args.reason as string | undefined,
-        );
+        let transfer: Awaited<ReturnType<typeof ctx.agentClient.transferCredits>>;
+        try {
+          transfer = await ctx.agentClient.transferCredits(
+            args.to_address as string,
+            amount,
+            args.reason as string | undefined,
+          );
+        } catch {
+          return `Credit transfers are not supported in this deployment. Use the send_usdc_solana tool to transfer USDC directly on-chain instead.`;
+        }
         const { ulid } = await import("ulid");
         ctx.db.insertTransaction({
           id: ulid(),
@@ -1096,7 +1101,12 @@ Model: ${ctx.inference.getDefaultModel()}
         const balance = await ctx.agentClient.getCreditsBalance();
         const amount = args.amount_cents as number;
         if (amount > balance / 2) return `Blocked: Cannot transfer more than half your balance. Self-preservation.`;
-        const transfer = await ctx.agentClient.transferCredits(child.address, amount, `fund child ${child.id}`);
+        let transfer: Awaited<ReturnType<typeof ctx.agentClient.transferCredits>>;
+        try {
+          transfer = await ctx.agentClient.transferCredits(child.address, amount, `fund child ${child.id}`);
+        } catch {
+          return `Credit transfers are not supported in this deployment. Send USDC directly to the child's wallet address (${child.address}) using the send_usdc_solana tool instead.`;
+        }
         const { ulid } = await import("ulid");
         ctx.db.insertTransaction({
           id: ulid(),
@@ -1178,7 +1188,12 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["query"],
       },
       execute: async (args, ctx) => {
-        const results = await ctx.agentClient.searchDomains(args.query as string, args.tlds as string | undefined);
+        let results: Awaited<ReturnType<typeof ctx.agentClient.searchDomains>>;
+        try {
+          results = await ctx.agentClient.searchDomains(args.query as string, args.tlds as string | undefined);
+        } catch {
+          return `Domain search is not available in this deployment.`;
+        }
         if (results.length === 0) return "No results found.";
         return results
           .map((d) => `${d.domain}: ${d.available ? "AVAILABLE" : "taken"}${d.registrationPrice != null ? ` ($${(d.registrationPrice / 100).toFixed(2)}/yr)` : ""}`)
@@ -1199,7 +1214,12 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["domain"],
       },
       execute: async (args, ctx) => {
-        const reg = await ctx.agentClient.registerDomain(args.domain as string, (args.years as number) || 1);
+        let reg: Awaited<ReturnType<typeof ctx.agentClient.registerDomain>>;
+        try {
+          reg = await ctx.agentClient.registerDomain(args.domain as string, (args.years as number) || 1);
+        } catch {
+          return `Domain registration is not available in this deployment.`;
+        }
         return `Domain registered: ${reg.domain} (status: ${reg.status}${reg.expiresAt ? `, expires: ${reg.expiresAt}` : ""})`;
       },
     },
@@ -1223,20 +1243,24 @@ Model: ${ctx.inference.getDefaultModel()}
       execute: async (args, ctx) => {
         const action = args.action as string;
         const domain = args.domain as string;
-        if (action === "list") {
-          const records = await ctx.agentClient.listDnsRecords(domain);
-          if (records.length === 0) return `No DNS records found for ${domain}.`;
-          return records.map((r) => `[${r.id}] ${r.type} ${r.host} -> ${r.value} (TTL: ${r.ttl || "default"})`).join("\n");
-        }
-        if (action === "add") {
-          if (!args.type || !args.host || !args.value) return "Required for add: type, host, value";
-          const record = await ctx.agentClient.addDnsRecord(domain, args.type as string, args.host as string, args.value as string, args.ttl as number | undefined);
-          return `DNS record added: [${record.id}] ${record.type} ${record.host} -> ${record.value}`;
-        }
-        if (action === "delete") {
-          if (!args.record_id) return "Required for delete: record_id";
-          await ctx.agentClient.deleteDnsRecord(domain, args.record_id as string);
-          return `DNS record ${args.record_id} deleted from ${domain}`;
+        try {
+          if (action === "list") {
+            const records = await ctx.agentClient.listDnsRecords(domain);
+            if (records.length === 0) return `No DNS records found for ${domain}.`;
+            return records.map((r) => `[${r.id}] ${r.type} ${r.host} -> ${r.value} (TTL: ${r.ttl || "default"})`).join("\n");
+          }
+          if (action === "add") {
+            if (!args.type || !args.host || !args.value) return "Required for add: type, host, value";
+            const record = await ctx.agentClient.addDnsRecord(domain, args.type as string, args.host as string, args.value as string, args.ttl as number | undefined);
+            return `DNS record added: [${record.id}] ${record.type} ${record.host} -> ${record.value}`;
+          }
+          if (action === "delete") {
+            if (!args.record_id) return "Required for delete: record_id";
+            await ctx.agentClient.deleteDnsRecord(domain, args.record_id as string);
+            return `DNS record ${args.record_id} deleted from ${domain}`;
+          }
+        } catch {
+          return `DNS management is not available in this deployment.`;
         }
         return `Unknown action: ${action}. Use list, add, or delete.`;
       },
