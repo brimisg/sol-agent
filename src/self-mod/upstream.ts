@@ -19,6 +19,40 @@ function git(cmd: string): string {
 }
 
 /**
+ * Resolve the default branch for the given remote (e.g. "origin").
+ * Tries, in order:
+ *   1. `git symbolic-ref refs/remotes/<remote>/HEAD` (set after git clone or git remote set-head)
+ *   2. The branch the current HEAD tracks upstream (`git rev-parse --abbrev-ref @{u}`)
+ *   3. Falls back to "main", then "master" based on what refs actually exist
+ */
+function resolveDefaultBranch(remote: string): string {
+  // 1. Symbolic ref written by git clone / git remote set-head -a
+  try {
+    const ref = git(`symbolic-ref refs/remotes/${remote}/HEAD`);
+    // "refs/remotes/origin/main" → "main"
+    return ref.replace(`refs/remotes/${remote}/`, "");
+  } catch {}
+
+  // 2. Branch the current HEAD is tracking
+  try {
+    const upstream = git("rev-parse --abbrev-ref @{u}");
+    // "origin/main" → "main"
+    return upstream.replace(`${remote}/`, "");
+  } catch {}
+
+  // 3. Check common branch names by whether the remote ref exists
+  for (const candidate of ["main", "master", "develop", "trunk"]) {
+    try {
+      git(`rev-parse --verify refs/remotes/${remote}/${candidate}`);
+      return candidate;
+    } catch {}
+  }
+
+  // Last resort
+  return "main";
+}
+
+/**
  * Return origin URL (credentials stripped), current branch, and HEAD info.
  */
 export function getRepoInfo(): {
@@ -43,8 +77,10 @@ export function checkUpstream(): {
   behind: number;
   commits: { hash: string; message: string }[];
 } {
-  git("fetch origin main --quiet");
-  const log = git("log HEAD..origin/main --oneline");
+  const remote = "origin";
+  const branch = resolveDefaultBranch(remote);
+  git(`fetch ${remote} ${branch} --quiet`);
+  const log = git(`log HEAD..${remote}/${branch} --oneline`);
   if (!log) return { behind: 0, commits: [] };
   const commits = log.split("\n").map((line) => {
     const [hash, ...rest] = line.split(" ");
@@ -62,7 +98,9 @@ export function getUpstreamDiffs(): {
   author: string;
   diff: string;
 }[] {
-  const log = git('log HEAD..origin/main --format="%H %an|||%s"');
+  const remote = "origin";
+  const branch = resolveDefaultBranch(remote);
+  const log = git(`log HEAD..${remote}/${branch} --format="%H %an|||%s"`);
   if (!log) return [];
 
   return log.split("\n").map((line) => {
