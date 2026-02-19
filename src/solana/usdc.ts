@@ -25,6 +25,23 @@ import {
 } from "@solana/spl-token";
 import type { UsdcBalanceResult, SolanaPaymentResult } from "../types.js";
 
+// ─── Connection pool ──────────────────────────────────────────
+// Connection objects are expensive to create (they open an HTTP keep-alive
+// pool and optionally a WebSocket). Reuse one per unique RPC endpoint for
+// the lifetime of the process instead of creating a new one per call.
+
+const connectionCache = new Map<string, Connection>();
+
+function getConnection(network: string, rpcUrl?: string): Connection {
+  const url = getRpcUrl(network, rpcUrl);
+  let conn = connectionCache.get(url);
+  if (!conn) {
+    conn = new Connection(url, "confirmed");
+    connectionCache.set(url, conn);
+  }
+  return conn;
+}
+
 // ─── USDC Mint Addresses ──────────────────────────────────────
 
 export const USDC_MINTS: Record<string, PublicKey> = {
@@ -83,7 +100,7 @@ export async function getUsdcBalanceDetailed(
   }
 
   try {
-    const connection = new Connection(getRpcUrl(network, rpcUrl), "confirmed");
+    const connection = getConnection(network, rpcUrl);
     const walletPubkey = new PublicKey(walletAddress);
 
     // Derive the associated token account (ATA) address — no network call.
@@ -124,7 +141,7 @@ export async function getSolBalance(
   rpcUrl?: string,
 ): Promise<number> {
   try {
-    const connection = new Connection(getRpcUrl(network, rpcUrl), "confirmed");
+    const connection = getConnection(network, rpcUrl);
     const walletPubkey = new PublicKey(walletAddress);
     const lamports = await connection.getBalance(walletPubkey);
     return lamports / LAMPORTS_PER_SOL;
@@ -150,7 +167,7 @@ export async function transferUsdc(
   }
 
   try {
-    const connection = new Connection(getRpcUrl(network, rpcUrl), "confirmed");
+    const connection = getConnection(network, rpcUrl);
     const toPubkey = new PublicKey(toAddress);
     const amountLamports = Math.floor(amountUsdc * 10 ** USDC_DECIMALS);
 
@@ -203,7 +220,7 @@ export async function transferSol(
   rpcUrl?: string,
 ): Promise<SolanaPaymentResult> {
   try {
-    const connection = new Connection(getRpcUrl(network, rpcUrl), "confirmed");
+    const connection = getConnection(network, rpcUrl);
     const toPubkey = new PublicKey(toAddress);
     const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
 
