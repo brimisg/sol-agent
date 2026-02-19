@@ -5,6 +5,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { AgentConfig } from "./types.js";
 import { DEFAULT_CONFIG, DEFAULT_INFERENCE_MODEL } from "./types.js";
@@ -142,7 +143,7 @@ export function saveConfig(config: AgentConfig): void {
 
 export function resolvePath(p: string): string {
   if (p.startsWith("~")) {
-    return path.join(process.env.HOME || "/root", p.slice(1));
+    return path.join(os.homedir(), p.slice(1));
   }
   return p;
 }

@@ -14,6 +14,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { createPatch } from "diff";
 import type {
@@ -107,7 +108,7 @@ function resolveAndValidatePath(filePath: string): string | null {
     // Resolve ~ to home
     let resolved = filePath;
     if (resolved.startsWith("~")) {
-      resolved = path.join(process.env.HOME || "/root", resolved.slice(1));
+      resolved = path.join(os.homedir(), resolved.slice(1));
     }
 
     // Resolve relative paths

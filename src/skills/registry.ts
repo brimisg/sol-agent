@@ -8,6 +8,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type {
   Skill,
@@ -170,7 +171,7 @@ export function listSkills(db: AgentDatabase): Skill[] {
 
 function resolveHome(p: string): string {
   if (p.startsWith("~")) {
-    return path.join(process.env.HOME || "/root", p.slice(1));
+    return path.join(os.homedir(), p.slice(1));
   }
   return p;
 }

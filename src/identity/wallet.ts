@@ -8,11 +8,12 @@
 
 import { Keypair } from "@solana/web3.js";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { WalletData } from "../types.js";
 
 const AGENT_DIR = path.join(
-  process.env.HOME || "/root",
+  os.homedir(),
   ".sol-agent",
 );
 const WALLET_FILE = path.join(AGENT_DIR, "wallet.json");

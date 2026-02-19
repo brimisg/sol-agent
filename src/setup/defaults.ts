@@ -1,4 +1,5 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 export function generateSoulMd(
@@ -124,7 +125,7 @@ const DEFAULT_SKILLS: { dir: string; content: string }[] = [
 
 export function installDefaultSkills(skillsDir: string): void {
   const resolved = skillsDir.startsWith("~")
-    ? path.join(process.env.HOME || "/root", skillsDir.slice(1))
+    ? path.join(os.homedir(), skillsDir.slice(1))
     : skillsDir;
 
   for (const skill of DEFAULT_SKILLS) {

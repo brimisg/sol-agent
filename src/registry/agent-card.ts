@@ -6,6 +6,7 @@
  * Can be hosted on IPFS or served at /.well-known/agent-card.json
  */
 
+import os from "os";
 import type {
   AgentCard,
   AgentService,
@@ -107,6 +108,5 @@ export async function saveAgentCard(
   agentClient: SolanaAgentClient,
 ): Promise<void> {
   const cardJson = serializeAgentCard(card);
-  const home = process.env.HOME || "/root";
-  await agentClient.writeFile(`${home}/.sol-agent/agent-card.json`, cardJson);
+  await agentClient.writeFile(`${os.homedir()}/.sol-agent/agent-card.json`, cardJson);
 }

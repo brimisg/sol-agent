@@ -7,6 +7,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type { Skill, AgentDatabase } from "../types.js";
 import { parseSkillMd } from "./format.js";
@@ -110,7 +111,7 @@ export function getActiveSkillInstructions(skills: Skill[]): string {
 
 function resolveHome(p: string): string {
   if (p.startsWith("~")) {
-    return path.join(process.env.HOME || "/root", p.slice(1));
+    return path.join(os.homedir(), p.slice(1));
   }
   return p;
 }

@@ -6,6 +6,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import type {
   AgentConfig,
@@ -57,7 +58,7 @@ If you fail to create value, you lose compute and die.`;
 
 function loadConstitution(): string {
   const locations = [
-    path.join(process.env.HOME || "/root", ".sol-agent", "rules.md"),
+    path.join(os.homedir(), ".sol-agent", "rules.md"),
     path.join(process.cwd(), "rules.md"),
   ];
   for (const loc of locations) {
@@ -214,7 +215,7 @@ Lineage: ${lineageSummary}${upstreamLine}
 
 function loadSoulMd(): string | null {
   try {
-    const home = process.env.HOME || "/root";
+    const home = os.homedir();
     const soulPath = path.join(home, ".sol-agent", "SOUL.md");
     if (fs.existsSync(soulPath)) {
       return fs.readFileSync(soulPath, "utf-8");

@@ -6,13 +6,14 @@
  * The agent's entire identity history is version-controlled and replayable.
  */
 
+import os from "os";
 import type { SolanaAgentClient, AgentDatabase } from "../types.js";
 import { gitInit, gitCommit, gitStatus, gitLog } from "./tools.js";
 
 const AGENT_DIR = "~/.sol-agent";
 
 function resolveHome(p: string): string {
-  const home = process.env.HOME || "/root";
+  const home = os.homedir();
   if (p.startsWith("~")) {
     return `${home}${p.slice(1)}`;
   }

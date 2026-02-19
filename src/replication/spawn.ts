@@ -8,6 +8,7 @@
  */
 
 import fs from "fs";
+import os from "os";
 import pathLib from "path";
 import type {
   SolanaAgentClient,
@@ -94,7 +95,7 @@ export async function spawnChild(
 
   // 4b. Propagate constitution (immutable, inherited before anything else)
   const constitutionPath = pathLib.join(
-    process.env.HOME || "/root",
+    os.homedir(),
     ".sol-agent",
     "rules.md",
   );
