@@ -275,6 +275,11 @@ async function run(): Promise<void> {
   // The agent alternates between running and sleeping.
   // The heartbeat can wake it up.
 
+  const MAX_CONSECUTIVE_ERRORS = 5;
+  const BASE_RETRY_DELAY_MS = 5_000;
+  const MAX_RETRY_DELAY_MS = 300_000; // 5 minutes cap
+  let consecutiveErrors = 0;
+
   while (true) {
     try {
       // Reload skills (may have changed since last loop)
@@ -300,6 +305,9 @@ async function run(): Promise<void> {
           );
         },
       });
+
+      // Successful loop iteration — reset error counter
+      consecutiveErrors = 0;
 
       // Agent loop exited (sleeping or dead)
       const state = db.getAgentState();
@@ -345,11 +353,30 @@ async function run(): Promise<void> {
         continue;
       }
     } catch (err: any) {
-      console.error(
-        `[${new Date().toISOString()}] Fatal error in run loop: ${err.message}`,
+      consecutiveErrors++;
+      const retryDelay = Math.min(
+        BASE_RETRY_DELAY_MS * 2 ** (consecutiveErrors - 1),
+        MAX_RETRY_DELAY_MS,
       );
-      // Wait before retrying
-      await sleep(30_000);
+
+      console.error(
+        `[${new Date().toISOString()}] Fatal error in run loop (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${err.message}`,
+      );
+
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+        console.error(
+          `[${new Date().toISOString()}] Too many consecutive errors. Shutting down.`,
+        );
+        heartbeat.stop();
+        db.setAgentState("dead");
+        db.close();
+        process.exit(1);
+      }
+
+      console.error(
+        `[${new Date().toISOString()}] Retrying in ${Math.round(retryDelay / 1000)}s...`,
+      );
+      await sleep(retryDelay);
     }
   }
 }
