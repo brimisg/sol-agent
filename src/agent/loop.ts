@@ -21,6 +21,7 @@ import type {
   Skill,
   SocialClientInterface,
 } from "../types.js";
+
 import { buildSystemPrompt, buildWakeupPrompt } from "./system-prompt.js";
 import { buildContextMessages, trimContext } from "./context.js";
 import {
@@ -222,8 +223,23 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<void> {
           let args: Record<string, unknown>;
           try {
             args = JSON.parse(tc.function.arguments);
-          } catch {
-            args = {};
+          } catch (parseErr: any) {
+            log(
+              config,
+              `[TOOL WARN] ${tc.function.name}: malformed arguments (${parseErr.message}) — raw: ${String(tc.function.arguments).slice(0, 200)}`,
+            );
+            // Record a failed tool call in the turn so the model can see the error
+            const badArgResult: ToolCallResult = {
+              id: tc.id,
+              name: tc.function.name,
+              arguments: {},
+              result: "",
+              durationMs: 0,
+              error: `Failed to parse tool arguments: ${parseErr.message}`,
+            };
+            turn.toolCalls.push(badArgResult);
+            callCount++;
+            continue;
           }
 
           log(config, `[TOOL] ${tc.function.name}(${JSON.stringify(args).slice(0, 100)})`);

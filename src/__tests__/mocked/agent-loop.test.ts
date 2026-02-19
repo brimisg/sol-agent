@@ -383,7 +383,8 @@ describe("agent loop — tool execution", () => {
     expect(mockExecuteTool).toHaveBeenCalledTimes(10);
   });
 
-  it("uses an empty object for malformed tool arguments instead of throwing", async () => {
+  it("records an error result for malformed tool arguments instead of throwing", async () => {
+    const db = makeDb();
     const chat = vi.fn()
       .mockResolvedValueOnce({
         ...STOP_RESPONSE,
@@ -391,10 +392,15 @@ describe("agent loop — tool execution", () => {
         finishReason: "tool_calls",
       })
       .mockResolvedValue(STOP_RESPONSE);
-    mockExecuteTool.mockResolvedValue({ name: "exec", result: "ok", error: undefined });
 
-    await expect(runAgentLoop(makeOptions({ inference: makeInference(chat) }))).resolves.toBeUndefined();
-    expect(mockExecuteTool).toHaveBeenCalledWith("exec", {}, expect.any(Array), expect.any(Object));
+    const turns: AgentTurn[] = [];
+    await runAgentLoop(makeOptions({ db, inference: makeInference(chat), onTurnComplete: (t) => turns.push(t) }));
+
+    // executeTool should NOT have been called — the parse error short-circuits it
+    expect(mockExecuteTool).not.toHaveBeenCalled();
+    // The turn should contain an error result for the failed tool call
+    expect(turns[0].toolCalls).toHaveLength(1);
+    expect(turns[0].toolCalls[0].error).toMatch(/Failed to parse tool arguments/);
   });
 
   it("fires onTurnComplete with correct token usage after each turn", async () => {
@@ -419,7 +425,8 @@ describe("agent loop — inbox processing", () => {
   });
 
   function makeInboxMessage(id: string, content: string, from = "sender"): InboxMessage {
-    return { id, from, to: "test-agent", content, timestamp: new Date().toISOString() };
+    const now = new Date().toISOString();
+    return { id, from, to: "test-agent", content, signedAt: now, createdAt: now };
   }
 
   it("processes inbox messages and marks each one as processed", async () => {
